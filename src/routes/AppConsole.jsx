@@ -560,20 +560,9 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const [walletSummaryError, setWalletSummaryError] = useState("");
   const [executionTrace, setExecutionTrace] = useState([]);
   const [executionTraceExpanded, setExecutionTraceExpanded] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage?.getItem("orkio_execution_trace_open") === "1";
+    if (typeof window === "undefined") return true;
+    return window.localStorage?.getItem("orkio_execution_trace_open") !== "0";
   });
-
-  const walletBalanceUsd = Number(walletSummary?.wallet?.balance_usd || 0);
-  const walletLowBalanceThresholdUsd = Number(
-    walletSummary?.wallet?.low_balance_threshold_usd
-    ?? walletSummary?.wallet?.auto_recharge_threshold_usd
-    ?? 3
-  );
-  const walletLowBalance = walletBalanceUsd <= walletLowBalanceThresholdUsd;
-  const walletActivePlanName = walletSummary?.active_plan?.name || "";
-  const walletAutoRechargeEnabled = !!walletSummary?.wallet?.auto_recharge_enabled;
-  const walletSummaryUpdatedAt = walletSummary?.wallet?.updated_at || null;
 
   // Destination selector (Team / single / multi)
   const [destMode, setDestMode] = useState("single"); // team|single|multi
@@ -595,9 +584,6 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
 
 const fileInputRef = useRef(null);
 const executionTraceRef = useRef([]);
-const streamTextRef = useRef("");
-const streamFinalTextRef = useRef("");
-const streamAgentNameRef = useRef("Orkio");
 
 const resetExecutionTrace = (steps = []) => {
   const normalized = Array.isArray(steps) ? steps.map((step, idx) => ({
@@ -892,13 +878,155 @@ useEffect(() => {
       setWalletSummaryError("");
       return undefined;
     }
+    let cancelled = false;
 
-    // Fail-open while the production billing schema is incomplete.
-    setWalletSummary(null);
-    setWalletSummaryLoading(false);
-    setWalletSummaryError("");
-    return undefined;
+    const loadWallet = async (silent = false) => {
+      if (!silent && !cancelled) setWalletSummaryLoading(true);
+      if (!silent && !cancelled) setWalletSummaryError("");
+      try {
+        const res = await getWalletSummary({ token, org: tenant });
+        if (cancelled) return;
+        setWalletSummary(res?.data || res || null);
+      } catch (err) {
+        if (!silent && !cancelled) {
+          setWalletSummaryError(err?.message || "Não foi possível carregar a wallet.");
+        }
+      } finally {
+        if (!silent && !cancelled) setWalletSummaryLoading(false);
+      }
+    };
+
+    void loadWallet(false);
+    const timer = window.setInterval(() => { void loadWallet(true); }, 60000);
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void loadWallet(true);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [token, tenant]);
+
+  useEffect(() => {
+    const onResize = () => {
+      try { setIsMobile(window.innerWidth <= 820); } catch {}
+    };
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    if (SUMMIT_VOICE_MODE === "stt_tts") {
+      setVoiceMode(true);
+      voiceModeRef.current = true;
+      if (realtimeModeRef.current) {
+        try { void stopRealtime("voice_mode_lock"); } catch {}
+        setRealtimeMode(false);
+        realtimeModeRef.current = false;
+      }
+      return;
+    }
+    setVoiceMode(false);
+    voiceModeRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkHealth() {
+      try {
+        await apiFetch("/api/health", { token, org: tenant });
+        if (!cancelled) setHealth("ok");
+      } catch {
+        if (!cancelled) setHealth("down");
+      }
+    }
+
+    if (token) checkHealth();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, tenant]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkOrionSquadHealth() {
+      if (!token || !showOrionSquad) {
+        if (!cancelled) setOrionSquadHealth(null);
+        return;
+      }
+      try {
+        const resp = await getOrionSquadHealth({ token, org: tenant });
+        if (!cancelled) setOrionSquadHealth(resp?.data || resp || null);
+      } catch {
+        if (!cancelled) setOrionSquadHealth({ ok: false });
+      }
+    }
+
+    void checkOrionSquadHealth();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, tenant, showOrionSquad]);
+
+  async function refreshOrionSquadPreview(messageToPreview) {
+    const previewMessage = String(messageToPreview || "").trim();
+    if (!token || !showOrionSquad || !previewMessage) return;
+    try {
+      const resp = await getOrionSquadPreview({ token, org: tenant, message: previewMessage });
+      setOrionSquadPreview(resp?.data || resp || null);
+    } catch {
+      // fail-open
+    }
+  }
+
+  function scrollToBottom() {
+    try {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    } catch {}
+  }
+
+  useEffect(() => { scrollToBottom(); }, [messages]);
+
+  const walletBalanceUsd = Number(walletSummary?.wallet?.balance_usd || 0);
+  const walletLowBalanceThresholdUsd = Number(
+    walletSummary?.wallet?.low_balance_threshold_usd
+    ?? walletSummary?.wallet?.auto_recharge_threshold_usd
+    ?? 3
+  );
+  const walletLowBalance = walletBalanceUsd <= walletLowBalanceThresholdUsd;
+  const walletActivePlanName = walletSummary?.active_plan?.name || "";
+  const walletAutoRechargeEnabled = !!walletSummary?.wallet?.auto_recharge_enabled;
+  const walletSummaryUpdatedAt = walletSummary?.wallet?.updated_at || null;
+
+  async function refreshWalletSummary(options = {}) {
+    const silent = options?.silent !== false;
+    if (!token) return null;
+    if (!silent) setWalletSummaryLoading(true);
+    if (!silent) setWalletSummaryError("");
+    try {
+      const res = await getWalletSummary({ token, org: tenant });
+      const payload = res?.data || res || null;
+      setWalletSummary(payload);
+      if (!silent) setWalletSummaryError("");
+      return payload;
+    } catch (err) {
+      if (!silent) setWalletSummaryError(err?.message || "Não foi possível carregar a wallet.");
+      return null;
+    } finally {
+      if (!silent) setWalletSummaryLoading(false);
+    }
+  }
 
   useEffect(() => {
     function onKeyDown(e) {
@@ -1122,64 +1250,12 @@ useEffect(() => {
     });
   }
 
-  function replaceAssistantPlaceholder(finalText, agentName = "Orkio") {
-    const clean = String(finalText || "").trim();
-    if (!clean) return;
-
-    setMessages((prev) => {
-      const arr = Array.isArray(prev) ? [...prev] : [];
-
-      for (let i = arr.length - 1; i >= 0; i--) {
-        const m = arr[i];
-        if (m?.role === "assistant" && String(m?.id || "").startsWith("tmp-ass-")) {
-          arr[i] = {
-            ...m,
-            content: clean,
-            agent_name: m.agent_name || agentName,
-            created_at: m.created_at || Math.floor(Date.now() / 1000),
-          };
-          return arr;
-        }
-      }
-
-      arr.push({
-        id: `ass-${Date.now()}`,
-        role: "assistant",
-        content: clean,
-        agent_name: agentName,
-        created_at: Math.floor(Date.now() / 1000),
-      });
-
-      return arr;
-    });
-  }
-
-  function promoteFinalAssistantMessage(freshMessages, fallbackText = "", fallbackAgentName = "Orkio") {
-    const list = Array.isArray(freshMessages) ? freshMessages : [];
-    const latestAssistant = [...list]
-      .reverse()
-      .find((m) => m?.role === "assistant" && !String(m?.id || "").startsWith("tmp-ass-") && String(m?.content || "").trim());
-
-    if (latestAssistant) {
-      setMessages(list);
-      return;
-    }
-
-    const fallback = String(fallbackText || "").trim();
-    if (fallback) {
-      replaceAssistantPlaceholder(fallback, fallbackAgentName);
-    }
-  }
-
   async function sendMessage(presetMsg = null, opts = {}) {
     const isRetry = !!opts?.isRetry;
     clearRealtimeIdleFollowup();
     const msg = ((presetMsg ?? text) || "").trim();
     if (!msg || sending) return;
     setSending(true);
-    streamTextRef.current = "";
-    streamFinalTextRef.current = "";
-    streamAgentNameRef.current = "Orkio";
 
     // STREAM-STAB: start new run and abort any previous stream
     streamRunRef.current += 1;
@@ -1285,28 +1361,25 @@ useEffect(() => {
             onExecution: (payload) => {
               appendExecutionTrace(describeExecutionEvent(payload));
             },
-            onChunk: (payload, draftText) => {
-              streamTextRef.current = String(draftText || "");
-              if (payload?.agent_name) streamAgentNameRef.current = payload.agent_name;
+            onChunk: (_payload, draftText) => {
               setMessages((prev) => prev.map((m) => (
                 m.id === draftAssistantId
-                  ? { ...m, content: draftText || "⌛ Preparando resposta...", agent_name: payload?.agent_name || m.agent_name || "Orkio" }
+                  ? { ...m, content: draftText || "⌛ Preparando resposta..." }
                   : m
               )));
             },
-            onAgentDone: (payload, draftText) => {
+            onAgentDone: (payload) => {
               appendExecutionTrace({
                 kind: "agent",
                 label: `${payload?.agent_name || payload?.agent_id || "Agente"} concluiu uma etapa`,
                 detail: payload?.message || payload?.status || "Resposta parcial pronta.",
                 agentName: payload?.agent_name || "",
               });
-              const finalText = String(payload?.message || payload?.content || payload?.text || draftText || "").trim();
-              if (payload?.agent_name) streamAgentNameRef.current = payload.agent_name;
-              if (finalText) {
-                streamFinalTextRef.current = finalText;
-                replaceAssistantPlaceholder(finalText, payload?.agent_name || streamAgentNameRef.current || "Orkio");
-              }
+              setMessages((prev) => prev.map((m) => (
+                m.id === draftAssistantId
+                  ? { ...m, content: (m.content || "").replace(/^⌛\s*/, "") || "Resposta concluída." }
+                  : m
+              )));
             },
             onKeepalive: () => {},
             onDone: (payload) => {
@@ -1314,11 +1387,6 @@ useEffect(() => {
               if (payload?.thread_id) newThreadId = payload.thread_id;
               if (payload?.runtime_hints) setRuntimeHints(payload.runtime_hints);
               if (payload?.trace_id) setLastTraceId(payload.trace_id);
-              const finalText = String(streamFinalTextRef.current || streamTextRef.current || "").trim();
-              if (finalText) {
-                replaceAssistantPlaceholder(finalText, streamAgentNameRef.current || "Orkio");
-              }
-              setExecutionTraceExpanded(false);
             },
           });
           resp = {
@@ -1382,14 +1450,7 @@ useEffect(() => {
         setThreadId(effectiveTidForLoad);
       }
       const freshMessages = await loadMessages(effectiveTidForLoad);
-      promoteFinalAssistantMessage(
-        freshMessages,
-        streamFinalTextRef.current || streamTextRef.current,
-        streamAgentNameRef.current || resp?.data?.agent_name || "Orkio"
-      );
-      // Wallet summary remains fail-open while the production billing schema is incomplete.
-      // void refreshWalletSummary({ silent: true });
-      setExecutionTraceExpanded(false);
+      void refreshWalletSummary({ silent: true });
 
       // PATCH0100_14: store agent info from response
       if (resp?.data) {
@@ -1409,7 +1470,6 @@ useEffect(() => {
             label: "Execução concluída",
             detail: buildExecutionDoneDetail({ runtime_hints: resp.data.runtime_hints || null }),
           });
-          setExecutionTraceExpanded(false);
         }
       }
       // V2V-PATCH: Auto-play TTS — fase TTS + fase playing com trace_id
