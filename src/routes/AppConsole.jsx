@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch, uploadFile, chat, chatStream, transcribeAudio, requestFounderHandoff, getRealtimeClientSecret, startRealtimeSession, startSummitSession, postRealtimeEventsBatch, endRealtimeSession, getRealtimeSession, getSummitSessionScore, submitSummitSessionReview, downloadRealtimeAta as downloadRealtimeAtaFile, guardRealtimeTranscript, getOrionSquadHealth, getOrionSquadPreview, getWalletSummary } from "../ui/api.js";
+import { apiFetch, uploadFile, chat, chatStream, transcribeAudio, requestFounderHandoff, getRealtimeClientSecret, startRealtimeSession, startSummitSession, postRealtimeEventsBatch, endRealtimeSession, getRealtimeSession, getSummitSessionScore, submitSummitSessionReview, downloadRealtimeAta as downloadRealtimeAtaFile, guardRealtimeTranscript, getOrionSquadHealth, getOrionSquadPreview } from "../ui/api.js";
 import { clearSession, getTenant, getToken, getUser, isAdmin, isApproved, setSession, logout } from "../lib/auth.js";
 import { ORKIO_VOICES, coerceVoiceId } from "../lib/voices.js";
 import TermsModal from "../ui/TermsModal.jsx";
@@ -16,6 +16,8 @@ const SPEECH_RECOGNITION_LANG = ((ORKIO_ENV.VITE_SPEECH_RECOGNITION_LANG || impo
 
 
 const ORKIO_CHAT_STREAM_PRIMARY = ((ORKIO_ENV.VITE_CHAT_STREAM_PRIMARY || import.meta.env.VITE_CHAT_STREAM_PRIMARY || "true").toString().trim().toLowerCase() !== "false");
+
+const WALLET_UI_ENABLED = false;
 
 class StreamSemanticError extends Error {
   constructor(payload = {}) {
@@ -872,45 +874,10 @@ useEffect(() => {
 }, []);
 
   useEffect(() => {
-    if (!token) {
-      setWalletSummary(null);
-      setWalletSummaryLoading(false);
-      setWalletSummaryError("");
-      return undefined;
-    }
-    let cancelled = false;
-
-    const loadWallet = async (silent = false) => {
-      if (!silent && !cancelled) setWalletSummaryLoading(true);
-      if (!silent && !cancelled) setWalletSummaryError("");
-      try {
-        const res = await getWalletSummary({ token, org: tenant });
-        if (cancelled) return;
-        setWalletSummary(res?.data || res || null);
-      } catch (err) {
-        if (!silent && !cancelled) {
-          setWalletSummaryError(err?.message || "Não foi possível carregar a wallet.");
-        }
-      } finally {
-        if (!silent && !cancelled) setWalletSummaryLoading(false);
-      }
-    };
-
-    void loadWallet(false);
-    const timer = window.setInterval(() => { void loadWallet(true); }, 60000);
-
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") {
-        void loadWallet(true);
-      }
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
+    setWalletSummary(null);
+    setWalletSummaryLoading(false);
+    setWalletSummaryError("");
+    return undefined;
   }, [token, tenant]);
 
   useEffect(() => {
@@ -1009,23 +976,11 @@ useEffect(() => {
   const walletAutoRechargeEnabled = !!walletSummary?.wallet?.auto_recharge_enabled;
   const walletSummaryUpdatedAt = walletSummary?.wallet?.updated_at || null;
 
-  async function refreshWalletSummary(options = {}) {
-    const silent = options?.silent !== false;
-    if (!token) return null;
-    if (!silent) setWalletSummaryLoading(true);
-    if (!silent) setWalletSummaryError("");
-    try {
-      const res = await getWalletSummary({ token, org: tenant });
-      const payload = res?.data || res || null;
-      setWalletSummary(payload);
-      if (!silent) setWalletSummaryError("");
-      return payload;
-    } catch (err) {
-      if (!silent) setWalletSummaryError(err?.message || "Não foi possível carregar a wallet.");
-      return null;
-    } finally {
-      if (!silent) setWalletSummaryLoading(false);
-    }
+  async function refreshWalletSummary() {
+    setWalletSummary(null);
+    setWalletSummaryLoading(false);
+    setWalletSummaryError("");
+    return null;
   }
 
   useEffect(() => {
@@ -3506,9 +3461,11 @@ async function stopRealtime(reason = 'client_stop') {
           </div>
 
           <div style={styles.userActions}>
-            <button style={styles.iconBtn} onClick={() => nav("/wallet")} title={walletLowBalance ? "Recarregar wallet" : "Wallet & usage"}>
-              💳
-            </button>
+            {WALLET_UI_ENABLED ? (
+              <button style={styles.iconBtn} onClick={() => nav("/wallet")} title={walletLowBalance ? "Recarregar wallet" : "Wallet & usage"}>
+                💳
+              </button>
+            ) : null}
             {canAccessAdmin && (
               <button style={styles.iconBtn} onClick={() => nav("/admin")} title="Admin Console">
                 <IconSettings />
@@ -3568,6 +3525,8 @@ async function stopRealtime(reason = 'client_stop') {
             ) : null}
           </div>
         </div>
+
+        {WALLET_UI_ENABLED ? (
 
         <div
           style={{
@@ -3652,6 +3611,8 @@ async function stopRealtime(reason = 'client_stop') {
             </button>
           </div>
         </div>
+
+        ) : null}
 
         {/* Messages */}
         <div style={{ ...styles.chatArea, padding: isMobile ? "12px 12px 18px" : styles.chatArea.padding }}>
