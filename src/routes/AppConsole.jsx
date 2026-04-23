@@ -564,6 +564,17 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
     return window.localStorage?.getItem("orkio_execution_trace_open") === "1";
   });
 
+  const walletBalanceUsd = Number(walletSummary?.wallet?.balance_usd || 0);
+  const walletLowBalanceThresholdUsd = Number(
+    walletSummary?.wallet?.low_balance_threshold_usd
+    ?? walletSummary?.wallet?.auto_recharge_threshold_usd
+    ?? 3
+  );
+  const walletLowBalance = walletBalanceUsd <= walletLowBalanceThresholdUsd;
+  const walletActivePlanName = walletSummary?.active_plan?.name || "";
+  const walletAutoRechargeEnabled = !!walletSummary?.wallet?.auto_recharge_enabled;
+  const walletSummaryUpdatedAt = walletSummary?.wallet?.updated_at || null;
+
   // Destination selector (Team / single / multi)
   const [destMode, setDestMode] = useState("single"); // team|single|multi
   const [destSingle, setDestSingle] = useState(""); // agent id
