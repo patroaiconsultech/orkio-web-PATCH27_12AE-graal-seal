@@ -778,6 +778,9 @@ const closeCapacityModal = () => {
 };
   const streamCtlRef = useRef(null);
   const streamRunRef = useRef(0);
+  const streamTextRef = useRef("");
+  const streamFinalTextRef = useRef("");
+  const streamAgentNameRef = useRef("Orkio");
 
   const [v2vPhase, setV2vPhase] = useState(null); // null | 'recording' | 'stt' | 'chat' | 'tts' | 'playing' | 'error'
   const [v2vError, setV2vError] = useState(null);
@@ -1250,6 +1253,53 @@ useEffect(() => {
     });
   }
 
+  function replaceAssistantPlaceholder(finalText, agentName = "Orkio") {
+    const clean = String(finalText || "").trim();
+    if (!clean) return;
+
+    setMessages((prev) => {
+      const arr = Array.isArray(prev) ? [...prev] : [];
+
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const m = arr[i];
+        if (m?.role === "assistant" && String(m?.id || "").startsWith("tmp-ass-")) {
+          arr[i] = {
+            ...m,
+            content: clean,
+            agent_name: m.agent_name || agentName,
+            created_at: m.created_at || Math.floor(Date.now() / 1000),
+          };
+          return arr;
+        }
+      }
+
+      arr.push({
+        id: `ass-${Date.now()}`,
+        role: "assistant",
+        content: clean,
+        agent_name: agentName,
+        created_at: Math.floor(Date.now() / 1000),
+      });
+
+      return arr;
+    });
+  }
+
+  function promoteFinalAssistantMessage(freshMessages, fallbackText = "", fallbackAgentName = "Orkio") {
+    const list = Array.isArray(freshMessages) ? freshMessages : [];
+    const latestAssistant = [...list].reverse().find((m) => m?.role === "assistant" && String(m?.content || "").trim());
+
+    if (latestAssistant) {
+      setMessages(list);
+      return;
+    }
+
+    const fallback = String(fallbackText || "").trim();
+    if (fallback) {
+      replaceAssistantPlaceholder(fallback, fallbackAgentName);
+    }
+  }
+
   async function sendMessage(presetMsg = null, opts = {}) {
     const isRetry = !!opts?.isRetry;
     clearRealtimeIdleFollowup();
@@ -1307,6 +1357,9 @@ useEffect(() => {
       setV2vPhase('chat');
       setV2vError(null);
       setWalletBlockedDetail(null);
+      streamTextRef.current = "";
+      streamFinalTextRef.current = "";
+      streamAgentNameRef.current = "Orkio";
       setExecutionTraceExpanded(true);
       resetExecutionTrace([
         {
@@ -1361,10 +1414,16 @@ useEffect(() => {
             onExecution: (payload) => {
               appendExecutionTrace(describeExecutionEvent(payload));
             },
-            onChunk: (_payload, draftText) => {
+            onChunk: (payload, draftText) => {
+              streamTextRef.current = String(draftText || streamTextRef.current || "");
+              if (payload?.agent_name) streamAgentNameRef.current = payload.agent_name;
               setMessages((prev) => prev.map((m) => (
                 m.id === draftAssistantId
-                  ? { ...m, content: draftText || "⌛ Preparando resposta..." }
+                  ? {
+                      ...m,
+                      content: draftText || "⌛ Preparando resposta...",
+                      agent_name: payload?.agent_name || m.agent_name || streamAgentNameRef.current || "Orkio",
+                    }
                   : m
               )));
             },
@@ -1375,11 +1434,18 @@ useEffect(() => {
                 detail: payload?.message || payload?.status || "Resposta parcial pronta.",
                 agentName: payload?.agent_name || "",
               });
-              setMessages((prev) => prev.map((m) => (
-                m.id === draftAssistantId
-                  ? { ...m, content: (m.content || "").replace(/^⌛\s*/, "") || "Resposta concluída." }
-                  : m
-              )));
+              if (payload?.agent_name) streamAgentNameRef.current = payload.agent_name;
+              const finalText = String(
+                payload?.message ||
+                payload?.content ||
+                payload?.text ||
+                streamTextRef.current ||
+                ""
+              ).trim();
+              if (finalText) {
+                streamFinalTextRef.current = finalText;
+                replaceAssistantPlaceholder(finalText, payload?.agent_name || streamAgentNameRef.current || "Orkio");
+              }
             },
             onKeepalive: () => {},
             onDone: (payload) => {
@@ -1387,6 +1453,12 @@ useEffect(() => {
               if (payload?.thread_id) newThreadId = payload.thread_id;
               if (payload?.runtime_hints) setRuntimeHints(payload.runtime_hints);
               if (payload?.trace_id) setLastTraceId(payload.trace_id);
+              if (payload?.agent_name) streamAgentNameRef.current = payload.agent_name;
+              const finalText = String(streamFinalTextRef.current || streamTextRef.current || "").trim();
+              if (finalText) {
+                replaceAssistantPlaceholder(finalText, streamAgentNameRef.current || "Orkio");
+              }
+              setExecutionTraceExpanded(false);
             },
           });
           resp = {
@@ -1450,6 +1522,11 @@ useEffect(() => {
         setThreadId(effectiveTidForLoad);
       }
       const freshMessages = await loadMessages(effectiveTidForLoad);
+      promoteFinalAssistantMessage(
+        freshMessages,
+        streamFinalTextRef.current || streamTextRef.current,
+        streamAgentNameRef.current || "Orkio"
+      );
       void refreshWalletSummary({ silent: true });
 
       // PATCH0100_14: store agent info from response
