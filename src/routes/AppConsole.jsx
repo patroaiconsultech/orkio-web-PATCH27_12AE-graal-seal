@@ -1345,6 +1345,7 @@ useEffect(() => {
       // v4: SSE becomes the primary chat rail, with JSON fallback preserved.
       let resp = null;
       let newThreadId = threadId;
+      let streamDonePayload = null;
 
       if (ORKIO_CHAT_STREAM_PRIMARY) {
         try {
@@ -1407,6 +1408,7 @@ useEffect(() => {
             },
             onKeepalive: () => {},
             onDone: (payload) => {
+              streamDonePayload = payload || null;
               appendExecutionTrace(describeExecutionDone(payload));
               if (payload?.thread_id) newThreadId = payload.thread_id;
               if (payload?.runtime_hints) {
@@ -1416,6 +1418,19 @@ useEffect(() => {
                 }
               }
               if (payload?.trace_id) setLastTraceId(payload.trace_id);
+              if (payload?.agent_name) setActiveRuntimeAgent(payload.agent_name);
+              if (payload?.final_text) {
+                setMessages((prev) => prev.map((m) => (
+                  m.id === draftAssistantId
+                    ? {
+                        ...m,
+                        content: String(payload.final_text || "").trim() || m.content,
+                        agent_name: payload.agent_name || m.agent_name || "Orkio",
+                        agent_id: payload.agent_id || m.agent_id || null,
+                      }
+                    : m
+                )));
+              }
             },
           });
           resp = {
@@ -1480,6 +1495,44 @@ useEffect(() => {
       }
       const freshMessages = await loadMessages(effectiveTidForLoad);
       void refreshWalletSummary({ silent: true });
+
+      if (streamDonePayload?.final_text) {
+        const normalizedFinal = String(streamDonePayload.final_text || "").trim();
+        const hasFinalAssistant = (freshMessages || []).some((m) =>
+          m?.role === "assistant" &&
+          String(m?.content || "").trim() === normalizedFinal
+        );
+        if (!hasFinalAssistant && normalizedFinal) {
+          setMessages((prev) => {
+            const replaced = prev.map((m) => (
+              m.id === draftAssistantId
+                ? {
+                    ...m,
+                    content: normalizedFinal,
+                    agent_name: streamDonePayload?.agent_name || m.agent_name || "Orkio",
+                    agent_id: streamDonePayload?.agent_id || m.agent_id || null,
+                    voice_id: streamDonePayload?.voice_id || m.voice_id || null,
+                    avatar_url: streamDonePayload?.avatar_url || m.avatar_url || null,
+                  }
+                : m
+            ));
+            const stillMissing = !replaced.some((m) => String(m?.id || "") === draftAssistantId);
+            if (stillMissing) {
+              replaced.push({
+                id: `stream-final-${Date.now()}`,
+                role: "assistant",
+                content: normalizedFinal,
+                agent_name: streamDonePayload?.agent_name || "Orkio",
+                agent_id: streamDonePayload?.agent_id || null,
+                voice_id: streamDonePayload?.voice_id || null,
+                avatar_url: streamDonePayload?.avatar_url || null,
+                created_at: Math.floor(Date.now() / 1000),
+              });
+            }
+            return replaced;
+          });
+        }
+      }
 
       // PATCH0100_14: store agent info from response
       if (resp?.data) {
