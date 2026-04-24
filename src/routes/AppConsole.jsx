@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch, uploadFile, chat, chatStream, transcribeAudio, requestFounderHandoff, getRealtimeClientSecret, startRealtimeSession, startSummitSession, postRealtimeEventsBatch, endRealtimeSession, getRealtimeSession, getSummitSessionScore, submitSummitSessionReview, downloadRealtimeAta as downloadRealtimeAtaFile, guardRealtimeTranscript, getOrionSquadHealth, getOrionSquadPreview } from "../ui/api.js";
+import { apiFetch, uploadFile, chat, chatStream, transcribeAudio, requestFounderHandoff, getRealtimeClientSecret, startRealtimeSession, startSummitSession, postRealtimeEventsBatch, endRealtimeSession, getRealtimeSession, getSummitSessionScore, submitSummitSessionReview, downloadRealtimeAta as downloadRealtimeAtaFile, guardRealtimeTranscript, getOrionSquadHealth, getOrionSquadPreview, getAgentCapabilities } from "../ui/api.js";
 import { clearSession, getTenant, getToken, getUser, isAdmin, isApproved, setSession, logout } from "../lib/auth.js";
 import { ORKIO_VOICES, coerceVoiceId } from "../lib/voices.js";
 import TermsModal from "../ui/TermsModal.jsx";
@@ -385,6 +385,37 @@ function buildExecutionDoneDetail(payload = {}) {
   return parts.join(" • ");
 }
 
+
+function normalizeCapabilityPayload(payload = null) {
+  if (!payload || typeof payload !== "object") return null;
+  const multiagent = payload?.multiagent && typeof payload.multiagent === "object" ? payload.multiagent : {};
+  const github = payload?.github && typeof payload.github === "object" ? payload.github : {};
+  return {
+    multiagent,
+    github,
+  };
+}
+
+function formatGithubRuntimeStatus(capabilities = null) {
+  const normalized = normalizeCapabilityPayload(capabilities);
+  const github = normalized?.github || {};
+  if (!github?.available) return "sem acesso";
+  const mode = String(github?.mode || "").trim().toLowerCase();
+  if (mode === "governed_pr_only") return "PR-only";
+  if (github?.read_enabled && !github?.write_enabled) return "read-only";
+  if (github?.write_enabled) return "conectado";
+  return "conectado";
+}
+
+function formatActiveAgentRuntime(agentName = "") {
+  const slug = String(agentName || "").trim().toLowerCase();
+  if (!slug) return "";
+  if (slug.startsWith("orion")) return "Orion analisando";
+  if (slug.startsWith("chris")) return "Chris validando";
+  if (slug.startsWith("auditor")) return "Auditor revisando";
+  return "Orkio respondendo";
+}
+
 function traceStepTone(kind = "status") {
   if (kind === "error") return { icon: "⚠️", color: "#fca5a5", border: "rgba(248,113,113,0.24)", background: "rgba(127,29,29,0.22)" };
   if (kind === "done") return { icon: "✅", color: "#86efac", border: "rgba(74,222,128,0.24)", background: "rgba(20,83,45,0.22)" };
@@ -555,6 +586,9 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const showRuntimeHints = Boolean(user?.role === "admin" && typeof window !== "undefined" && window.localStorage?.getItem("orkio_show_runtime_hints") === "1");
   const showOrionSquad = Boolean(user?.role === "admin" && typeof window !== "undefined" && window.localStorage?.getItem("orkio_show_orion_squad") === "1");
   const [lastTraceId, setLastTraceId] = useState(null);
+  const [agentCapabilities, setAgentCapabilities] = useState(null);
+  const [activeRuntimeAgent, setActiveRuntimeAgent] = useState("");
+  const [runtimeHandoffLabel, setRuntimeHandoffLabel] = useState("");
   const [orionSquadHealth, setOrionSquadHealth] = useState(null);
   const [orionSquadPreview, setOrionSquadPreview] = useState(null);
   const [walletSummary, setWalletSummary] = useState(null);
@@ -628,12 +662,18 @@ const describeExecutionStatus = (payload = {}) => ({
   agentName: payload?.agent_name || "",
 });
 
-const describeExecutionEvent = (payload = {}) => ({
-  kind: payload?.kind || (payload?.scope === "agent" ? "agent" : "system"),
-  label: payload?.label || summarizeExecutionStatus(payload),
-  detail: String(payload?.detail || payload?.message || "").trim(),
-  agentName: payload?.agent_name || "",
-});
+const describeExecutionEvent = (payload = {}) => {
+  const isHandoff = payload?.step === "agent_handoff";
+  const handoffLabel = isHandoff
+    ? `${payload?.from_agent_name || payload?.from_agent_id || "Agente"} → ${payload?.to_agent_name || payload?.agent_name || payload?.to_agent_id || "Agente"}`
+    : null;
+  return {
+    kind: payload?.kind || (payload?.scope === "agent" ? "agent" : "system"),
+    label: handoffLabel || payload?.label || summarizeExecutionStatus(payload),
+    detail: String(payload?.detail || payload?.message || "").trim(),
+    agentName: payload?.agent_name || payload?.to_agent_name || "",
+  };
+};
 
 const describeExecutionError = (payload = {}) => {
   const label = payload?.code === "WALLET_INSUFFICIENT_BALANCE"
@@ -665,6 +705,24 @@ useEffect(() => {
     window.localStorage?.setItem("orkio_execution_trace_open", executionTraceExpanded ? "1" : "0");
   } catch {}
 }, [executionTraceExpanded]);
+
+useEffect(() => {
+  let cancelled = false;
+  async function loadCapabilities() {
+    if (!token) {
+      if (!cancelled) setAgentCapabilities(null);
+      return;
+    }
+    try {
+      const resp = await getAgentCapabilities({ token, org: tenant });
+      if (!cancelled) setAgentCapabilities(normalizeCapabilityPayload(resp?.data || resp || null));
+    } catch {
+      if (!cancelled) setAgentCapabilities(null);
+    }
+  }
+  void loadCapabilities();
+  return () => { cancelled = true; };
+}, [token, tenant]);
 
 const messagesEndRef = useRef(null);
   const messagesRef = useRef([]); // PATCH0100_20B: keep latest messages for voice-to-voice sequencing
@@ -1263,6 +1321,8 @@ useEffect(() => {
       setV2vError(null);
       setWalletBlockedDetail(null);
       setExecutionTraceExpanded(true);
+      setActiveRuntimeAgent("Orkio");
+      setRuntimeHandoffLabel("");
       resetExecutionTrace([
         {
           kind: "system",
@@ -1301,6 +1361,7 @@ useEffect(() => {
           const streamMeta = await consumeChatStream(streamResp, {
             onStatus: (payload) => {
               if (payload?.status) setUploadStatus(`⌛ ${payload.status}`);
+              if (payload?.agent_name) setActiveRuntimeAgent(payload.agent_name);
               appendExecutionTrace(describeExecutionStatus(payload));
             },
             onError: (payload) => {
@@ -1314,6 +1375,13 @@ useEffect(() => {
               if (payload?.message) setV2vError(String(payload.message));
             },
             onExecution: (payload) => {
+              if (payload?.step === "agent_handoff") {
+                const handoff = `${payload?.from_agent_name || payload?.from_agent_id || "Agente"} → ${payload?.to_agent_name || payload?.agent_name || payload?.to_agent_id || "Agente"}`;
+                setRuntimeHandoffLabel(handoff);
+                setActiveRuntimeAgent(payload?.to_agent_name || payload?.agent_name || "");
+              } else if (payload?.agent_name) {
+                setActiveRuntimeAgent(payload.agent_name);
+              }
               appendExecutionTrace(describeExecutionEvent(payload));
             },
             onChunk: (_payload, draftText) => {
@@ -1324,6 +1392,7 @@ useEffect(() => {
               )));
             },
             onAgentDone: (payload) => {
+              if (payload?.agent_name) setActiveRuntimeAgent(payload.agent_name);
               appendExecutionTrace({
                 kind: "agent",
                 label: `${payload?.agent_name || payload?.agent_id || "Agente"} concluiu uma etapa`,
@@ -1340,7 +1409,12 @@ useEffect(() => {
             onDone: (payload) => {
               appendExecutionTrace(describeExecutionDone(payload));
               if (payload?.thread_id) newThreadId = payload.thread_id;
-              if (payload?.runtime_hints) setRuntimeHints(payload.runtime_hints);
+              if (payload?.runtime_hints) {
+                setRuntimeHints(payload.runtime_hints);
+                if (payload.runtime_hints?.capabilities) {
+                  setAgentCapabilities(normalizeCapabilityPayload(payload.runtime_hints.capabilities));
+                }
+              }
               if (payload?.trace_id) setLastTraceId(payload.trace_id);
             },
           });
@@ -1411,7 +1485,13 @@ useEffect(() => {
       if (resp?.data) {
         const ai = { agent_id: resp.data.agent_id, agent_name: resp.data.agent_name, voice_id: resolveAgentVoice({ agent_name: resp.data.agent_name, voice_id: resp.data.voice_id }), avatar_url: resp.data.avatar_url };
         setLastAgentInfo(ai);
-        if (resp.data.runtime_hints) setRuntimeHints(resp.data.runtime_hints || null);
+        if (resp.data.agent_name) setActiveRuntimeAgent(resp.data.agent_name);
+        if (resp.data.runtime_hints) {
+          setRuntimeHints(resp.data.runtime_hints || null);
+          if (resp.data.runtime_hints?.capabilities) {
+            setAgentCapabilities(normalizeCapabilityPayload(resp.data.runtime_hints.capabilities));
+          }
+        }
         if (resp.data.trace_id) setLastTraceId(resp.data.trace_id);
         if (!resp?.data?.used_stream) {
           appendExecutionTrace({
@@ -3526,6 +3606,38 @@ async function stopRealtime(reason = 'client_stop') {
           </div>
         </div>
 
+        {(activeRuntimeAgent || runtimeHandoffLabel || agentCapabilities) ? (
+          <div
+            style={{
+              margin: isMobile ? "10px 12px 0" : "12px 16px 0",
+              padding: "10px 12px",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.08)",
+              background: "rgba(255,255,255,0.035)",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+              color: "rgba(255,255,255,0.82)",
+              fontSize: 12,
+            }}
+          >
+            {activeRuntimeAgent ? (
+              <span style={{ fontWeight: 800 }}>
+                {formatActiveAgentRuntime(activeRuntimeAgent)}
+              </span>
+            ) : null}
+            {runtimeHandoffLabel ? (
+              <span style={{ color: "rgba(255,255,255,0.68)" }}>{runtimeHandoffLabel}</span>
+            ) : null}
+            {agentCapabilities ? (
+              <span style={{ marginLeft: "auto", color: "rgba(255,255,255,0.68)" }}>
+                GitHub: {formatGithubRuntimeStatus(agentCapabilities)}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+
         {WALLET_UI_ENABLED ? (
 
         <div
@@ -3890,6 +4002,8 @@ async function stopRealtime(reason = 'client_stop') {
               {(runtimeHints?.memory?.strong_resume_ready ?? null) !== null ? <div><strong>Resume readiness:</strong> {runtimeHints.memory.strong_resume_ready ? "ready" : "warming"}</div> : null}
               {runtimeHints?.routing?.execution_cursor?.current_node ? <div><strong>Current node:</strong> {runtimeHints.routing.execution_cursor.current_node}</div> : null}
               {(runtimeHints?.routing?.routing_confidence ?? null) !== null ? <div><strong>Routing confidence:</strong> {runtimeHints.routing.routing_confidence}</div> : null}
+              {runtimeHints?.capabilities?.multiagent?.available_agents?.length ? <div><strong>Agents:</strong> {runtimeHints.capabilities.multiagent.available_agents.join(", ")}</div> : null}
+              {runtimeHints?.capabilities?.github ? <div><strong>GitHub:</strong> {formatGithubRuntimeStatus(runtimeHints.capabilities)}</div> : null}
               {lastTraceId ? <div><strong>Trace:</strong> {lastTraceId}</div> : null}
             </div>
           ) : null}
