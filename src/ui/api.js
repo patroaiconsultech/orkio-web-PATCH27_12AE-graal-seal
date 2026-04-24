@@ -413,6 +413,13 @@ export const getOrionSquadPreview = ({ message, token, org, tenant } = {}) =>
     org: org || tenant,
   });
 
+export const getAgentCapabilities = ({ token, org, tenant } = {}) =>
+  apiFetch("/api/agents/capabilities", {
+    method: "GET",
+    token,
+    org: org || tenant,
+  });
+
 /* =========================
  * AUDIO / STT
  * ========================= */
