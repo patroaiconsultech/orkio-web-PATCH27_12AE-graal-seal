@@ -1263,11 +1263,28 @@ useEffect(() => {
     });
   }
 
+  function clearTmpAssistantDrafts() {
+    setMessages((prev) => (Array.isArray(prev)
+      ? prev.filter((m) => !String(m?.id || "").startsWith("tmp-ass-"))
+      : []));
+  }
+
+  function hasPersistedAssistantForTurn(freshMessages, turnStartedAt) {
+    const list = Array.isArray(freshMessages) ? freshMessages : [];
+    return list.some((m) => {
+      if (m?.role !== "assistant") return false;
+      if (String(m?.id || "").startsWith("tmp-ass-")) return false;
+      const createdAt = Number(m?.created_at || 0);
+      return Number.isFinite(createdAt) && createdAt >= Math.max(0, Number(turnStartedAt || 0) - 2);
+    });
+  }
+
   async function sendMessage(presetMsg = null, opts = {}) {
     const isRetry = !!opts?.isRetry;
     clearRealtimeIdleFollowup();
     const msg = ((presetMsg ?? text) || "").trim();
     if (!msg || sending) return;
+    const turnStartedAt = Math.floor(Date.now() / 1000);
     setSending(true);
 
     // STREAM-STAB: start new run and abort any previous stream
@@ -1494,6 +1511,7 @@ useEffect(() => {
         setThreadId(effectiveTidForLoad);
       }
       const freshMessages = await loadMessages(effectiveTidForLoad);
+      clearTmpAssistantDrafts();
       void refreshWalletSummary({ silent: true });
 
       if (streamDonePayload?.final_text) {
@@ -1502,33 +1520,33 @@ useEffect(() => {
           m?.role === "assistant" &&
           String(m?.content || "").trim() === normalizedFinal
         );
-        if (!hasFinalAssistant && normalizedFinal) {
+        const hasPersistedAssistant = hasPersistedAssistantForTurn(freshMessages, turnStartedAt);
+        if (!hasFinalAssistant && !hasPersistedAssistant && normalizedFinal) {
           setMessages((prev) => {
-            const replaced = prev.map((m) => (
-              m.id === draftAssistantId
-                ? {
-                    ...m,
-                    content: normalizedFinal,
-                    agent_name: streamDonePayload?.agent_name || m.agent_name || "Orkio",
-                    agent_id: streamDonePayload?.agent_id || m.agent_id || null,
-                    voice_id: streamDonePayload?.voice_id || m.voice_id || null,
-                    avatar_url: streamDonePayload?.avatar_url || m.avatar_url || null,
-                  }
-                : m
-            ));
-            const stillMissing = !replaced.some((m) => String(m?.id || "") === draftAssistantId);
-            if (stillMissing) {
-              replaced.push({
-                id: `stream-final-${Date.now()}`,
-                role: "assistant",
-                content: normalizedFinal,
-                agent_name: streamDonePayload?.agent_name || "Orkio",
-                agent_id: streamDonePayload?.agent_id || null,
-                voice_id: streamDonePayload?.voice_id || null,
-                avatar_url: streamDonePayload?.avatar_url || null,
-                created_at: Math.floor(Date.now() / 1000),
-              });
-            }
+            const replaced = (Array.isArray(prev) ? prev : [])
+              .filter((m) => !String(m?.id || "").startsWith("tmp-ass-"))
+              .map((m) => (
+                m.id === draftAssistantId
+                  ? {
+                      ...m,
+                      content: normalizedFinal,
+                      agent_name: streamDonePayload?.agent_name || m.agent_name || "Orkio",
+                      agent_id: streamDonePayload?.agent_id || m.agent_id || null,
+                      voice_id: streamDonePayload?.voice_id || m.voice_id || null,
+                      avatar_url: streamDonePayload?.avatar_url || m.avatar_url || null,
+                    }
+                  : m
+              ));
+            replaced.push({
+              id: `stream-final-${Date.now()}`,
+              role: "assistant",
+              content: normalizedFinal,
+              agent_name: streamDonePayload?.agent_name || "Orkio",
+              agent_id: streamDonePayload?.agent_id || null,
+              voice_id: streamDonePayload?.voice_id || null,
+              avatar_url: streamDonePayload?.avatar_url || null,
+              created_at: Math.floor(Date.now() / 1000),
+            });
             return replaced;
           });
         }
