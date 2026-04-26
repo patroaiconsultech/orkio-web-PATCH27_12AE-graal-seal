@@ -1097,9 +1097,7 @@ useEffect(() => {
     activeThreadIdRef.current = nextId;
     requestedThreadIdRef.current = nextId;
     messagesLoadRequestRef.current += 1;
-    try {
-      messagesAbortRef.current?.abort?.();
-    } catch {}
+    try { messagesAbortRef.current?.abort?.(); } catch {}
     messagesAbortRef.current = null;
     if (clearMessages) {
       clearTmpAssistantDrafts();
@@ -1114,9 +1112,7 @@ useEffect(() => {
 
   useEffect(() => {
     return () => {
-      try {
-        messagesAbortRef.current?.abort?.();
-      } catch {}
+      try { messagesAbortRef.current?.abort?.(); } catch {}
       messagesAbortRef.current = null;
     };
   }, []);
@@ -1126,7 +1122,8 @@ useEffect(() => {
       const { data } = await apiFetch("/api/threads", { token, org: tenant });
       const list = data || [];
       setThreads(list);
-      if (!activeThreadIdRef.current && list?.[0]?.id) {
+      const currentActive = String(activeThreadIdRef.current || threadId || "");
+      if (!currentActive && list?.[0]?.id) {
         activateThread(list[0].id, { clearMessages: true });
       }
     } catch (e) {
@@ -1140,15 +1137,21 @@ useEffect(() => {
     const targetId = String(tid || "");
     if (!targetId) return [];
     const force = !!opts?.force;
+    const expectedEpoch = Number.isFinite(Number(opts?.expectedEpoch))
+      ? Number(opts.expectedEpoch)
+      : activeThreadEpochRef.current;
+
+    const currentActive = String(activeThreadIdRef.current || threadId || "");
+    if (currentActive && targetId !== currentActive && !opts?.allowInactive) {
+      return [];
+    }
+
     const requestSeq = ++messagesLoadRequestRef.current;
-    const epochAtRequest = activeThreadEpochRef.current;
     requestedThreadIdRef.current = targetId;
 
     let controller = null;
     try {
-      try {
-        messagesAbortRef.current?.abort?.();
-      } catch {}
+      try { messagesAbortRef.current?.abort?.(); } catch {}
       controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
       messagesAbortRef.current = controller;
 
@@ -1164,9 +1167,9 @@ useEffect(() => {
       const sameRequest = requestSeq === messagesLoadRequestRef.current;
       const sameRequestedThread = requestedThreadIdRef.current === targetId;
       const sameActiveThread =
-        activeThreadIdRef.current === targetId &&
+        String(activeThreadIdRef.current || "") === targetId &&
         String(threadId || "") === targetId;
-      const sameEpoch = epochAtRequest === activeThreadEpochRef.current;
+      const sameEpoch = expectedEpoch === activeThreadEpochRef.current;
       const wasAborted = !!controller?.signal?.aborted;
       const canApply =
         sameActiveThread &&
@@ -1226,7 +1229,7 @@ useEffect(() => {
     const epochAtEffect = activeThreadEpochRef.current;
     clearTmpAssistantDrafts();
     setMessages([]);
-    void loadMessages(currentThreadId, { force: true, epoch: epochAtEffect });
+    void loadMessages(currentThreadId, { force: true, expectedEpoch: epochAtEffect });
   }, [threadId]);
 
 
@@ -1245,7 +1248,9 @@ useEffect(() => {
       if (data?.id) {
         activateThread(data.id, { clearMessages: true });
         await loadThreads();
-        await loadMessages(data.id, { force: true });
+        if (String(activeThreadIdRef.current || "") === String(data.id)) {
+          await loadMessages(data.id, { force: true, expectedEpoch: activeThreadEpochRef.current });
+        }
       }
     } catch (e) {
       alert(e?.message || "Falha ao criar conversa");
@@ -1268,7 +1273,7 @@ useEffect(() => {
       const nextId = list?.[0]?.id || "";
       if (nextId) {
         activateThread(nextId, { clearMessages: true });
-        await loadMessages(nextId, { force: true });
+        await loadMessages(nextId, { force: true, expectedEpoch: activeThreadEpochRef.current });
       } else {
         activateThread("", { clearMessages: true });
       }
@@ -1603,16 +1608,18 @@ useEffect(() => {
        if (resp?.data?.thread_id) newThreadId = resp.data.thread_id;
       // F-03 FIX: usar newThreadId (var local) em vez de threadId (closure stale do React)
       // Se a conversa foi criada durante o SSE stream, threadId ainda aponta para a thread antiga
-      const effectiveTidForLoad = newThreadId || threadId;
+      const effectiveTidForLoad = String(newThreadId || threadId || "");
       if (effectiveTidForLoad) {
-        if (effectiveTidForLoad !== activeThreadIdRef.current) {
+        if (effectiveTidForLoad !== String(activeThreadIdRef.current || "")) {
           activateThread(effectiveTidForLoad, { clearMessages: true });
         } else {
-          activeThreadIdRef.current = String(effectiveTidForLoad);
-          requestedThreadIdRef.current = String(effectiveTidForLoad);
+          activeThreadIdRef.current = effectiveTidForLoad;
+          requestedThreadIdRef.current = effectiveTidForLoad;
         }
       }
-      const freshMessages = await loadMessages(effectiveTidForLoad, { force: true });
+      const freshMessages = effectiveTidForLoad
+        ? await loadMessages(effectiveTidForLoad, { force: true, expectedEpoch: activeThreadEpochRef.current })
+        : [];
       clearTmpAssistantDrafts();
       void refreshWalletSummary({ silent: true });
 
@@ -3289,7 +3296,7 @@ async function stopRealtime(reason = 'client_stop') {
         console.info("[Upload] start", { scope: "thread", filename: f?.name, threadId: effectiveThreadId, size: f?.size || null });
         await uploadFile(f, { token, org: tenant, threadId: effectiveThreadId, intent: "chat" });
         setUploadStatus("Arquivo anexado à conversa ✅");
-        try { await loadMessages(effectiveThreadId, { force: true }); } catch {}
+        try { await loadMessages(effectiveThreadId, { force: true, expectedEpoch: activeThreadEpochRef.current }); } catch {}
       } else if (uploadScope === "agents") {
         console.info("[Upload] start", { scope: "agents", filename: f?.name, agentIds: uploadAgentIds, size: f?.size || null });
         if (!uploadAgentIds.length) {
@@ -3306,13 +3313,13 @@ async function stopRealtime(reason = 'client_stop') {
           setUploadStatus("Arquivo institucional (global) ✅");
           // STAB: reload com effectiveThreadId para garantir que mensagem system aparece
           try {
-            if (effectiveThreadId) await loadMessages(effectiveThreadId);
+            if (effectiveThreadId) await loadMessages(effectiveThreadId, { expectedEpoch: activeThreadEpochRef.current });
           } catch (e) { console.warn("loadMessages after institutional upload failed:", e); }
         } else {
           // B2: request institutionalization; keep accessible in this thread
           await uploadFile(f, { token, org: tenant, threadId: effectiveThreadId, intent: "chat", institutionalRequest: true });
           setUploadStatus("Solicitação enviada ao admin (institucional) ✅");
-          try { await loadMessages(effectiveThreadId, { force: true }); } catch {}
+          try { await loadMessages(effectiveThreadId, { force: true, expectedEpoch: activeThreadEpochRef.current }); } catch {}
         }
       }
 
@@ -3677,7 +3684,7 @@ async function stopRealtime(reason = 'client_stop') {
             threads.map((t) => (
               <button
                 key={t.id}
-                onClick={() => activateThread(t.id, { clearMessages: true })}
+                onClick={() => { if (String(t.id || "") !== String(activeThreadIdRef.current || threadId || "")) activateThread(t.id, { clearMessages: true }); }}
                 style={{
                   ...styles.threadItem,
                   ...(t.id === threadId ? styles.threadItemActive : {}),
