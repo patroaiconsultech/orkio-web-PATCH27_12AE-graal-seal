@@ -579,6 +579,12 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const [messages, setMessages] = useState([]);
   const [agents, setAgents] = useState([]);
   const agentsByNameRef = useRef(new Map());
+  const activeThreadIdRef = useRef("");
+  const activeThreadEpochRef = useRef(0);
+  const messagesAbortRef = useRef(null);
+  const messagesLoadRequestRef = useRef(0);
+  const requestedThreadIdRef = useRef("");
+
 
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -1084,11 +1090,45 @@ useEffect(() => {
 }, []);
 
 
+  function activateThread(nextThreadId, opts = {}) {
+    const nextId = String(nextThreadId || "");
+    const { clearMessages = true } = opts || {};
+    activeThreadEpochRef.current += 1;
+    activeThreadIdRef.current = nextId;
+    requestedThreadIdRef.current = nextId;
+    messagesLoadRequestRef.current += 1;
+    try {
+      messagesAbortRef.current?.abort?.();
+    } catch {}
+    messagesAbortRef.current = null;
+    if (clearMessages) {
+      clearTmpAssistantDrafts();
+      setMessages([]);
+    }
+    setThreadId((prev) => (String(prev || "") === nextId ? prev : nextId));
+  }
+
+  useEffect(() => {
+    activeThreadIdRef.current = String(threadId || "");
+  }, [threadId]);
+
+  useEffect(() => {
+    return () => {
+      try {
+        messagesAbortRef.current?.abort?.();
+      } catch {}
+      messagesAbortRef.current = null;
+    };
+  }, []);
+
   async function loadThreads() {
     try {
       const { data } = await apiFetch("/api/threads", { token, org: tenant });
-      setThreads(data || []);
-      if (!threadId && data?.[0]?.id) setThreadId(data[0].id);
+      const list = data || [];
+      setThreads(list);
+      if (!activeThreadIdRef.current && list?.[0]?.id) {
+        activateThread(list[0].id, { clearMessages: true });
+      }
     } catch (e) {
       console.error("loadThreads error:", e);
       clearSession();
@@ -1096,15 +1136,58 @@ useEffect(() => {
     }
   }
 
-  async function loadMessages(tid) {
-    if (!tid) return [];
+  async function loadMessages(tid, opts = {}) {
+    const targetId = String(tid || "");
+    if (!targetId) return [];
+    const force = !!opts?.force;
+    const requestSeq = ++messagesLoadRequestRef.current;
+    const epochAtRequest = activeThreadEpochRef.current;
+    requestedThreadIdRef.current = targetId;
+
+    let controller = null;
     try {
-      const { data } = await apiFetch(`/api/messages?thread_id=${encodeURIComponent(tid)}&include_welcome=0`, { token, org: tenant });
-      setMessages(data || []);
-      return (data || []);
+      try {
+        messagesAbortRef.current?.abort?.();
+      } catch {}
+      controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
+      messagesAbortRef.current = controller;
+
+      const fetchOpts = { token, org: tenant };
+      if (controller?.signal) fetchOpts.signal = controller.signal;
+
+      const { data } = await apiFetch(
+        `/api/messages?thread_id=${encodeURIComponent(targetId)}&include_welcome=0`,
+        fetchOpts
+      );
+
+      const normalized = data || [];
+      const sameRequest = requestSeq === messagesLoadRequestRef.current;
+      const sameRequestedThread = requestedThreadIdRef.current === targetId;
+      const sameActiveThread =
+        activeThreadIdRef.current === targetId &&
+        String(threadId || "") === targetId;
+      const sameEpoch = epochAtRequest === activeThreadEpochRef.current;
+      const wasAborted = !!controller?.signal?.aborted;
+      const canApply =
+        sameActiveThread &&
+        sameRequestedThread &&
+        sameEpoch &&
+        !wasAborted &&
+        (force ? sameActiveThread : sameRequest);
+
+      if (canApply) {
+        setMessages(normalized);
+      }
+      return normalized;
     } catch (e) {
-      console.error("loadMessages error:", e);
+      if (e?.name !== "AbortError") {
+        console.error("loadMessages error:", e);
+      }
       return [];
+    } finally {
+      if (messagesAbortRef.current === controller) {
+        messagesAbortRef.current = null;
+      }
     }
   }
 
@@ -1134,7 +1217,17 @@ useEffect(() => {
     loadAgents();
   }, [token, tenant, onboardingChecked, onboardingOpen]);
 
-  useEffect(() => { if (threadId) loadMessages(threadId); }, [threadId]);
+  useEffect(() => {
+    const currentThreadId = String(threadId || "");
+    if (!currentThreadId) {
+      setMessages([]);
+      return;
+    }
+    const epochAtEffect = activeThreadEpochRef.current;
+    clearTmpAssistantDrafts();
+    setMessages([]);
+    void loadMessages(currentThreadId, { force: true, epoch: epochAtEffect });
+  }, [threadId]);
 
 
 
@@ -1150,8 +1243,9 @@ useEffect(() => {
         body: { title: "Nova conversa" },
       });
       if (data?.id) {
+        activateThread(data.id, { clearMessages: true });
         await loadThreads();
-        setThreadId(data.id);
+        await loadMessages(data.id, { force: true });
       }
     } catch (e) {
       alert(e?.message || "Falha ao criar conversa");
@@ -1172,9 +1266,12 @@ useEffect(() => {
       const list = data || [];
       setThreads(list);
       const nextId = list?.[0]?.id || "";
-      setThreadId(nextId);
-      if (nextId) await loadMessages(nextId);
-      else setMessages([]);
+      if (nextId) {
+        activateThread(nextId, { clearMessages: true });
+        await loadMessages(nextId, { force: true });
+      } else {
+        activateThread("", { clearMessages: true });
+      }
     } catch (e) {
       console.error("deleteThread error:", e);
       alert(e?.message || "Falha ao deletar conversa");
@@ -1507,10 +1604,15 @@ useEffect(() => {
       // F-03 FIX: usar newThreadId (var local) em vez de threadId (closure stale do React)
       // Se a conversa foi criada durante o SSE stream, threadId ainda aponta para a thread antiga
       const effectiveTidForLoad = newThreadId || threadId;
-      if (effectiveTidForLoad && effectiveTidForLoad !== threadId) {
-        setThreadId(effectiveTidForLoad);
+      if (effectiveTidForLoad) {
+        if (effectiveTidForLoad !== activeThreadIdRef.current) {
+          activateThread(effectiveTidForLoad, { clearMessages: true });
+        } else {
+          activeThreadIdRef.current = String(effectiveTidForLoad);
+          requestedThreadIdRef.current = String(effectiveTidForLoad);
+        }
       }
-      const freshMessages = await loadMessages(effectiveTidForLoad);
+      const freshMessages = await loadMessages(effectiveTidForLoad, { force: true });
       clearTmpAssistantDrafts();
       void refreshWalletSummary({ silent: true });
 
@@ -2263,7 +2365,7 @@ function scheduleRealtimeIdleFollowup() {
       setLastRealtimeSessionId(start?.session_id || null);
       rtcThreadIdRef.current = start?.thread_id || threadId || null;
       if (start?.thread_id && start.thread_id !== threadId) {
-        try { setThreadId(start.thread_id); } catch {}
+        try { activateThread(start.thread_id, { clearMessages: true }); } catch {}
       }
 
       rtcEventQueueRef.current = [];
@@ -3173,7 +3275,7 @@ async function stopRealtime(reason = 'client_stop') {
       try {
         const created = await apiFetch("/api/threads", { method: "POST", token, org: tenant, body: { title: "Nova conversa" }});
         effectiveThreadId = created?.data?.id;
-        if (effectiveThreadId) setThreadId(effectiveThreadId);
+        if (effectiveThreadId) activateThread(effectiveThreadId, { clearMessages: true });
       } catch (e) {
         console.warn("could not create thread before upload", e);
       }
@@ -3187,7 +3289,7 @@ async function stopRealtime(reason = 'client_stop') {
         console.info("[Upload] start", { scope: "thread", filename: f?.name, threadId: effectiveThreadId, size: f?.size || null });
         await uploadFile(f, { token, org: tenant, threadId: effectiveThreadId, intent: "chat" });
         setUploadStatus("Arquivo anexado à conversa ✅");
-        try { await loadMessages(effectiveThreadId); } catch {}
+        try { await loadMessages(effectiveThreadId, { force: true }); } catch {}
       } else if (uploadScope === "agents") {
         console.info("[Upload] start", { scope: "agents", filename: f?.name, agentIds: uploadAgentIds, size: f?.size || null });
         if (!uploadAgentIds.length) {
@@ -3210,7 +3312,7 @@ async function stopRealtime(reason = 'client_stop') {
           // B2: request institutionalization; keep accessible in this thread
           await uploadFile(f, { token, org: tenant, threadId: effectiveThreadId, intent: "chat", institutionalRequest: true });
           setUploadStatus("Solicitação enviada ao admin (institucional) ✅");
-          try { await loadMessages(effectiveThreadId); } catch {}
+          try { await loadMessages(effectiveThreadId, { force: true }); } catch {}
         }
       }
 
@@ -3575,7 +3677,7 @@ async function stopRealtime(reason = 'client_stop') {
             threads.map((t) => (
               <button
                 key={t.id}
-                onClick={() => setThreadId(t.id)}
+                onClick={() => activateThread(t.id, { clearMessages: true })}
                 style={{
                   ...styles.threadItem,
                   ...(t.id === threadId ? styles.threadItemActive : {}),
