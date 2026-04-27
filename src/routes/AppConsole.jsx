@@ -584,7 +584,30 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const messagesAbortRef = useRef(null);
   const messagesLoadRequestRef = useRef(0);
   const requestedThreadIdRef = useRef("");
+  const threadSelectionLockUntilRef = useRef(0);
+  const pinnedThreadIdRef = useRef("");
+  const THREAD_STORAGE_KEY = "orkio_active_thread_id";
 
+  function readStoredThreadId() {
+    if (typeof window === "undefined") return "";
+    try { return String(window.localStorage?.getItem(THREAD_STORAGE_KEY) || "").trim(); } catch { return ""; }
+  }
+
+  function persistActiveThreadId(nextId) {
+    const safeId = String(nextId || "").trim();
+    pinnedThreadIdRef.current = safeId;
+    if (typeof window === "undefined") return;
+    try {
+      if (safeId) window.localStorage?.setItem(THREAD_STORAGE_KEY, safeId);
+      else window.localStorage?.removeItem(THREAD_STORAGE_KEY);
+    } catch {}
+  }
+
+  function lockThreadSelection(nextId = "", ttlMs = 15000) {
+    const safeId = String(nextId || "").trim();
+    if (safeId) pinnedThreadIdRef.current = safeId;
+    threadSelectionLockUntilRef.current = Date.now() + Math.max(1000, Number(ttlMs || 0));
+  }
 
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -1092,13 +1115,17 @@ useEffect(() => {
 
   function activateThread(nextThreadId, opts = {}) {
     const nextId = String(nextThreadId || "");
-    const { clearMessages = true } = opts || {};
+    const { clearMessages = true, persist = true, lockMs = 15000 } = opts || {};
     activeThreadEpochRef.current += 1;
     activeThreadIdRef.current = nextId;
     requestedThreadIdRef.current = nextId;
     messagesLoadRequestRef.current += 1;
+    lockThreadSelection(nextId, lockMs);
     try { messagesAbortRef.current?.abort?.(); } catch {}
     messagesAbortRef.current = null;
+    if (persist) {
+      persistActiveThreadId(nextId);
+    }
     if (clearMessages) {
       clearTmpAssistantDrafts();
       setMessages([]);
@@ -1107,8 +1134,23 @@ useEffect(() => {
   }
 
   useEffect(() => {
-    activeThreadIdRef.current = String(threadId || "");
+    const safeThreadId = String(threadId || "");
+    activeThreadIdRef.current = safeThreadId;
+    if (safeThreadId) {
+      persistActiveThreadId(safeThreadId);
+    }
   }, [threadId]);
+
+  useEffect(() => {
+    if (!threadId) {
+      const stored = readStoredThreadId();
+      if (stored) {
+        activeThreadIdRef.current = stored;
+        requestedThreadIdRef.current = stored;
+        pinnedThreadIdRef.current = stored;
+      }
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -1117,19 +1159,57 @@ useEffect(() => {
     };
   }, []);
 
-  async function loadThreads() {
+  async function loadThreads(opts = {}) {
     try {
+      const preserveThreadId = String(
+        opts?.preserveThreadId
+        || pinnedThreadIdRef.current
+        || activeThreadIdRef.current
+        || threadId
+        || readStoredThreadId()
+        || ""
+      ).trim();
       const { data } = await apiFetch("/api/threads", { token, org: tenant });
-      const list = data || [];
+      const list = Array.isArray(data) ? data : [];
       setThreads(list);
-      const currentActive = String(activeThreadIdRef.current || threadId || "");
-      if (!currentActive && list?.[0]?.id) {
-        activateThread(list[0].id, { clearMessages: true });
+
+      const hasPreserved = preserveThreadId && list.some((t) => String(t?.id || "") === preserveThreadId);
+      const currentActive = String(activeThreadIdRef.current || threadId || "").trim();
+      const isLocked = threadSelectionLockUntilRef.current > Date.now();
+
+      if (hasPreserved) {
+        if (String(activeThreadIdRef.current || "") !== preserveThreadId || String(threadId || "") !== preserveThreadId) {
+          activateThread(preserveThreadId, { clearMessages: !opts?.keepMessages, persist: true, lockMs: isLocked ? Math.max(threadSelectionLockUntilRef.current - Date.now(), 1000) : 8000 });
+        } else {
+          persistActiveThreadId(preserveThreadId);
+        }
+        return list;
       }
+
+      if (isLocked && preserveThreadId) {
+        return list;
+      }
+
+      if (!currentActive && list?.[0]?.id) {
+        activateThread(list[0].id, { clearMessages: true, persist: true, lockMs: 5000 });
+        return list;
+      }
+
+      if (currentActive && !list.some((t) => String(t?.id || "") === currentActive)) {
+        const fallbackId = String(list?.[0]?.id || "");
+        if (fallbackId) {
+          activateThread(fallbackId, { clearMessages: true, persist: true, lockMs: 5000 });
+        } else {
+          activateThread("", { clearMessages: true, persist: true, lockMs: 2000 });
+        }
+      }
+
+      return list;
     } catch (e) {
       console.error("loadThreads error:", e);
       clearSession();
       nav("/auth");
+      return [];
     }
   }
 
@@ -1246,10 +1326,15 @@ useEffect(() => {
         body: { title: "Nova conversa" },
       });
       if (data?.id) {
-        activateThread(data.id, { clearMessages: true });
-        await loadThreads();
-        if (String(activeThreadIdRef.current || "") === String(data.id)) {
-          await loadMessages(data.id, { force: true, expectedEpoch: activeThreadEpochRef.current });
+        const newId = String(data.id || "");
+        activateThread(newId, { clearMessages: true, persist: true, lockMs: 20000 });
+        setThreads((prev) => {
+          const list = Array.isArray(prev) ? prev.filter((t) => String(t?.id || "") !== newId) : [];
+          return [{ ...(data || {}), id: newId }, ...list];
+        });
+        await loadThreads({ preserveThreadId: newId, keepMessages: true });
+        if (String(activeThreadIdRef.current || "") === newId) {
+          await loadMessages(newId, { force: true, expectedEpoch: activeThreadEpochRef.current });
         }
       }
     } catch (e) {
@@ -1272,10 +1357,10 @@ useEffect(() => {
       setThreads(list);
       const nextId = list?.[0]?.id || "";
       if (nextId) {
-        activateThread(nextId, { clearMessages: true });
+        activateThread(nextId, { clearMessages: true, persist: true, lockMs: 10000 });
         await loadMessages(nextId, { force: true, expectedEpoch: activeThreadEpochRef.current });
       } else {
-        activateThread("", { clearMessages: true });
+        activateThread("", { clearMessages: true, persist: true, lockMs: 3000 });
       }
     } catch (e) {
       console.error("deleteThread error:", e);
@@ -1611,11 +1696,14 @@ useEffect(() => {
       const effectiveTidForLoad = String(newThreadId || threadId || "");
       if (effectiveTidForLoad) {
         if (effectiveTidForLoad !== String(activeThreadIdRef.current || "")) {
-          activateThread(effectiveTidForLoad, { clearMessages: true });
+          activateThread(effectiveTidForLoad, { clearMessages: true, persist: true, lockMs: 20000 });
         } else {
           activeThreadIdRef.current = effectiveTidForLoad;
           requestedThreadIdRef.current = effectiveTidForLoad;
+          persistActiveThreadId(effectiveTidForLoad);
+          lockThreadSelection(effectiveTidForLoad, 20000);
         }
+        await loadThreads({ preserveThreadId: effectiveTidForLoad, keepMessages: true });
       }
       const freshMessages = effectiveTidForLoad
         ? await loadMessages(effectiveTidForLoad, { force: true, expectedEpoch: activeThreadEpochRef.current })
@@ -3684,7 +3772,12 @@ async function stopRealtime(reason = 'client_stop') {
             threads.map((t) => (
               <button
                 key={t.id}
-                onClick={() => { if (String(t.id || "") !== String(activeThreadIdRef.current || threadId || "")) activateThread(t.id, { clearMessages: true }); }}
+                onClick={() => {
+                  const nextId = String(t?.id || "");
+                  if (nextId && nextId !== String(activeThreadIdRef.current || threadId || "")) {
+                    activateThread(nextId, { clearMessages: true, persist: true, lockMs: 15000 });
+                  }
+                }}
                 style={{
                   ...styles.threadItem,
                   ...(t.id === threadId ? styles.threadItemActive : {}),
