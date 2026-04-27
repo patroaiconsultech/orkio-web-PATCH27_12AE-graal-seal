@@ -586,6 +586,9 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
   const requestedThreadIdRef = useRef("");
   const threadSelectionLockUntilRef = useRef(0);
   const pinnedThreadIdRef = useRef("");
+  const initialStoredThreadIdRef = useRef("");
+  const storageBootstrapConsumedRef = useRef(false);
+  const storageBootstrapInitializedRef = useRef(false);
   const THREAD_STORAGE_KEY = "orkio_active_thread_id";
 
   function readStoredThreadId() {
@@ -595,12 +598,25 @@ const [onboardingForm, setOnboardingForm] = useState(() => sanitizeOnboardingFor
 
   function persistActiveThreadId(nextId) {
     const safeId = String(nextId || "").trim();
-    pinnedThreadIdRef.current = safeId;
     if (typeof window === "undefined") return;
     try {
       if (safeId) window.localStorage?.setItem(THREAD_STORAGE_KEY, safeId);
       else window.localStorage?.removeItem(THREAD_STORAGE_KEY);
     } catch {}
+  }
+
+  function getBootstrapStoredThreadId() {
+    if (storageBootstrapConsumedRef.current) return "";
+    if (!storageBootstrapInitializedRef.current) {
+      initialStoredThreadIdRef.current = readStoredThreadId();
+      storageBootstrapInitializedRef.current = true;
+    }
+    return String(initialStoredThreadIdRef.current || "").trim();
+  }
+
+  function consumeStoredThreadBootstrap(nextId = "") {
+    storageBootstrapConsumedRef.current = true;
+    initialStoredThreadIdRef.current = String(nextId || "").trim();
   }
 
   function lockThreadSelection(nextId = "", ttlMs = 15000) {
@@ -1120,6 +1136,7 @@ useEffect(() => {
     activeThreadIdRef.current = nextId;
     requestedThreadIdRef.current = nextId;
     messagesLoadRequestRef.current += 1;
+    consumeStoredThreadBootstrap(nextId);
     lockThreadSelection(nextId, lockMs);
     try { messagesAbortRef.current?.abort?.(); } catch {}
     messagesAbortRef.current = null;
@@ -1143,11 +1160,10 @@ useEffect(() => {
 
   useEffect(() => {
     if (!threadId) {
-      const stored = readStoredThreadId();
+      const stored = getBootstrapStoredThreadId();
       if (stored) {
         activeThreadIdRef.current = stored;
         requestedThreadIdRef.current = stored;
-        pinnedThreadIdRef.current = stored;
       }
     }
   }, []);
@@ -1161,29 +1177,34 @@ useEffect(() => {
 
   async function loadThreads(opts = {}) {
     try {
-      const preserveThreadId = String(
+      const currentActive = String(activeThreadIdRef.current || threadId || "").trim();
+      const explicitPreserveThreadId = String(
         opts?.preserveThreadId
-        || pinnedThreadIdRef.current
-        || activeThreadIdRef.current
-        || threadId
-        || readStoredThreadId()
+        || currentActive
         || ""
       ).trim();
+      const bootstrapThreadId = explicitPreserveThreadId ? "" : getBootstrapStoredThreadId();
+      const preserveThreadId = String(explicitPreserveThreadId || bootstrapThreadId || "").trim();
+
       const { data } = await apiFetch("/api/threads", { token, org: tenant });
       const list = Array.isArray(data) ? data : [];
       setThreads(list);
 
       const hasPreserved = preserveThreadId && list.some((t) => String(t?.id || "") === preserveThreadId);
-      const currentActive = String(activeThreadIdRef.current || threadId || "").trim();
       const isLocked = threadSelectionLockUntilRef.current > Date.now();
 
       if (hasPreserved) {
+        consumeStoredThreadBootstrap(preserveThreadId);
         if (String(activeThreadIdRef.current || "") !== preserveThreadId || String(threadId || "") !== preserveThreadId) {
           activateThread(preserveThreadId, { clearMessages: !opts?.keepMessages, persist: true, lockMs: isLocked ? Math.max(threadSelectionLockUntilRef.current - Date.now(), 1000) : 8000 });
         } else {
           persistActiveThreadId(preserveThreadId);
         }
         return list;
+      }
+
+      if (bootstrapThreadId) {
+        consumeStoredThreadBootstrap("");
       }
 
       if (isLocked && preserveThreadId) {
@@ -1221,7 +1242,7 @@ useEffect(() => {
       ? Number(opts.expectedEpoch)
       : activeThreadEpochRef.current;
 
-    const currentActive = String(activeThreadIdRef.current || threadId || "");
+    const currentActive = String(activeThreadIdRef.current || "");
     if (currentActive && targetId !== currentActive && !opts?.allowInactive) {
       return [];
     }
@@ -1247,8 +1268,7 @@ useEffect(() => {
       const sameRequest = requestSeq === messagesLoadRequestRef.current;
       const sameRequestedThread = requestedThreadIdRef.current === targetId;
       const sameActiveThread =
-        String(activeThreadIdRef.current || "") === targetId &&
-        String(threadId || "") === targetId;
+        String(activeThreadIdRef.current || "") === targetId;
       const sameEpoch = expectedEpoch === activeThreadEpochRef.current;
       const wasAborted = !!controller?.signal?.aborted;
       const canApply =
@@ -1327,6 +1347,7 @@ useEffect(() => {
       });
       if (data?.id) {
         const newId = String(data.id || "");
+        consumeStoredThreadBootstrap(newId);
         activateThread(newId, { clearMessages: true, persist: true, lockMs: 20000 });
         setThreads((prev) => {
           const list = Array.isArray(prev) ? prev.filter((t) => String(t?.id || "") !== newId) : [];
@@ -1360,6 +1381,7 @@ useEffect(() => {
         activateThread(nextId, { clearMessages: true, persist: true, lockMs: 10000 });
         await loadMessages(nextId, { force: true, expectedEpoch: activeThreadEpochRef.current });
       } else {
+        consumeStoredThreadBootstrap("");
         activateThread("", { clearMessages: true, persist: true, lockMs: 3000 });
       }
     } catch (e) {
@@ -1380,7 +1402,7 @@ useEffect(() => {
         org: tenant,
         body: { title: next },
       });
-      await loadThreads();
+      await loadThreads({ preserveThreadId: String(activeThreadIdRef.current || threadId || "") });
     } catch (e) {
       alert(e?.message || "Falha ao renomear");
     }
@@ -1695,6 +1717,7 @@ useEffect(() => {
       // Se a conversa foi criada durante o SSE stream, threadId ainda aponta para a thread antiga
       const effectiveTidForLoad = String(newThreadId || threadId || "");
       if (effectiveTidForLoad) {
+        consumeStoredThreadBootstrap(effectiveTidForLoad);
         if (effectiveTidForLoad !== String(activeThreadIdRef.current || "")) {
           activateThread(effectiveTidForLoad, { clearMessages: true, persist: true, lockMs: 20000 });
         } else {
