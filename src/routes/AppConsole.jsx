@@ -7,6 +7,7 @@ import TermsModal from "../ui/TermsModal.jsx";
 import PWAInstallPrompt from "../components/PWAInstallPrompt.jsx";
 import OnboardingModal from "../components/OnboardingModal.jsx";
 import { startSessionHeartbeat } from "../lib/sessionHeartbeat.js";
+import EmptyStatePremium from "../components/console/EmptyStatePremium.jsx";
 
 const ORKIO_ENV = (typeof window !== "undefined" && window.__ORKIO_ENV__) ? window.__ORKIO_ENV__ : {};
 const SUMMIT_VOICE_MODE = ((ORKIO_ENV.VITE_SUMMIT_VOICE_MODE || import.meta.env.VITE_SUMMIT_VOICE_MODE || "realtime").trim().toLowerCase() === "stt_tts")
@@ -1505,7 +1506,27 @@ useEffect(() => {
     });
   }
 
-  async function sendMessage(presetMsg = null, opts = {}) {
+  
+  function fillPremiumPrompt(promptText) {
+    const next = String(promptText || "").trim();
+    if (!next) return;
+    setText(next);
+    try { window.requestAnimationFrame(() => textareaRef.current?.focus?.()); } catch {}
+  }
+
+  function handlePremiumPrimaryAction() {
+    void sendMessage("@Orion me entregue uma leitura executiva da prioridade mais importante agora e o próximo melhor passo.");
+  }
+
+  function handlePremiumSecondaryAction() {
+    void sendMessage("@Team mapeiem a oportunidade de maior impacto e menor risco para esta fase da plataforma.");
+  }
+
+  function handlePremiumTertiaryAction() {
+    fillPremiumPrompt("@Orion organize um plano prático de execução para hoje com foco em impacto real.");
+  }
+
+async function sendMessage(presetMsg = null, opts = {}) {
     const isRetry = !!opts?.isRetry;
     clearRealtimeIdleFollowup();
     const msg = ((presetMsg ?? text) || "").trim();
@@ -4056,9 +4077,13 @@ async function stopRealtime(reason = 'client_stop') {
         {/* Messages */}
         <div style={{ ...styles.chatArea, padding: isMobile ? "12px 12px 18px" : styles.chatArea.padding }}>
           {messages.length === 0 ? (
-            <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "14px", padding: "8px" }}>
-              Nenhuma mensagem ainda. Você pode chamar múltiplos agentes com <b>@Team</b> ou usar o seletor acima.
-            </div>
+            <EmptyStatePremium
+              user={user}
+              onPrimaryAction={handlePremiumPrimaryAction}
+              onSecondaryAction={handlePremiumSecondaryAction}
+              onTertiaryAction={handlePremiumTertiaryAction}
+              onFillPrompt={fillPremiumPrompt}
+            />
           ) : (
             messages.map((m) => (
               <div
