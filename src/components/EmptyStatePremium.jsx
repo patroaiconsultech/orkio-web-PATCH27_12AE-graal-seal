@@ -1,9 +1,7 @@
 import React from "react";
 
 const COLORS = {
-  bg: "#020617",
-  panel: "rgba(15, 23, 42, 0.84)",
-  panelStrong: "#0f172a",
+  surface: "linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, rgba(7, 12, 22, 0.98) 100%)",
   border: "rgba(148, 163, 184, 0.16)",
   text: "#f8fafc",
   muted: "#94a3b8",
@@ -13,56 +11,69 @@ const COLORS = {
   success: "#22c55e",
 };
 
-const featureCards = [
-  {
-    title: "Execução auditável",
-    description: "Cada etapa deixa rastro operacional verificável, com mais confiança e menos ruído.",
-  },
-  {
-    title: "Inteligência orquestrada",
-    description: "Diagnóstico, despacho e consolidação fluem como uma única experiência de alto padrão.",
-  },
-  {
-    title: "Pronta para decisão",
-    description: "A interface conduz para a próxima ação com clareza, sem parecer um console técnico bruto.",
-  },
+const PROMPT_SUGGESTIONS = [
+  "Quero um diagnóstico executivo da plataforma",
+  "Monte um plano cirúrgico para a próxima melhoria",
+  "Mostre a prioridade mais importante desta semana",
 ];
 
-export default function EmptyStatePremium({ onStart }) {
+function callMaybe(fn, ...args) {
+  if (typeof fn === "function") fn(...args);
+}
+
+export default function EmptyStatePremium({
+  user,
+  onStart,
+  onPrimaryAction,
+  onSecondaryAction,
+  onTertiaryAction,
+  onFillPrompt,
+}) {
+  const firstName = String(user?.name || user?.full_name || user?.email || "Founder")
+    .split("@")[0]
+    .split(" ")[0]
+    .trim();
+
+  const handlePrimary = () => {
+    if (typeof onPrimaryAction === "function") {
+      onPrimaryAction();
+      return;
+    }
+    callMaybe(onStart);
+  };
+
   return (
     <div
       style={{
-        minHeight: "100vh",
-        background:
-          "radial-gradient(circle at top left, rgba(124, 58, 237, 0.22), transparent 28%), radial-gradient(circle at top right, rgba(37, 99, 235, 0.18), transparent 24%), #020617",
-        color: COLORS.text,
-        padding: 28,
-        boxSizing: "border-box",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        width: "100%",
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1.18fr) minmax(320px, 420px)",
+        gap: 20,
+        alignItems: "stretch",
       }}
     >
       <div
         style={{
-          width: "100%",
-          maxWidth: 1240,
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1.1fr) minmax(320px, 460px)",
-          gap: 24,
-          alignItems: "stretch",
+          background: COLORS.surface,
+          border: `1px solid ${COLORS.border}`,
+          borderRadius: 32,
+          padding: 28,
+          boxShadow: "0 32px 90px rgba(2, 6, 23, 0.42)",
+          position: "relative",
+          overflow: "hidden",
         }}
       >
         <div
           style={{
-            background: COLORS.panel,
-            border: `1px solid ${COLORS.border}`,
-            borderRadius: 32,
-            padding: 36,
-            backdropFilter: "blur(14px)",
-            boxShadow: "0 30px 80px rgba(2, 6, 23, 0.5)",
+            position: "absolute",
+            inset: 0,
+            background:
+              "radial-gradient(circle at top left, rgba(124, 58, 237, 0.22), transparent 32%), radial-gradient(circle at top right, rgba(37, 99, 235, 0.16), transparent 28%)",
+            pointerEvents: "none",
           }}
-        >
+        />
+
+        <div style={{ position: "relative", zIndex: 1 }}>
           <div
             style={{
               display: "inline-flex",
@@ -71,12 +82,13 @@ export default function EmptyStatePremium({ onStart }) {
               borderRadius: 999,
               padding: "10px 14px",
               background: "rgba(124, 58, 237, 0.14)",
-              border: "1px solid rgba(124, 58, 237, 0.2)",
+              border: "1px solid rgba(124, 58, 237, 0.22)",
               color: "#ddd6fe",
-              fontSize: 13,
-              fontWeight: 700,
-              letterSpacing: "0.03em",
-              marginBottom: 20,
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              marginBottom: 18,
             }}
           >
             <span
@@ -88,34 +100,35 @@ export default function EmptyStatePremium({ onStart }) {
                 boxShadow: "0 0 0 6px rgba(34, 197, 94, 0.16)",
               }}
             />
-            Ambiente operacional ativo
+            Console premium ativo
           </div>
 
-          <div style={{ maxWidth: 720 }}>
+          <div style={{ maxWidth: 760 }}>
             <h1
               style={{
                 margin: 0,
-                fontSize: 52,
+                color: COLORS.text,
+                fontSize: 42,
                 lineHeight: 1.02,
                 letterSpacing: "-0.04em",
               }}
             >
-              Orkio Intelligence Console
+              Bem-vindo, {firstName || "Founder"}
             </h1>
 
             <p
               style={{
-                marginTop: 18,
+                marginTop: 16,
                 marginBottom: 0,
                 color: COLORS.muted,
-                fontSize: 18,
-                lineHeight: 1.7,
-                maxWidth: 680,
+                fontSize: 17,
+                lineHeight: 1.75,
+                maxWidth: 760,
               }}
             >
-              Uma experiência de execução estratégica desenhada para parecer
-              premium desde o primeiro clique: clara, elegante, confiável e
-              orientada à próxima decisão.
+              O shell da plataforma permanece intacto. Agora o centro da tela entrega
+              uma primeira vitória mais clara: orientação executiva, ações úteis e
+              percepção premium sem esconder threads, acessos ou navegação.
             </p>
           </div>
 
@@ -123,35 +136,48 @@ export default function EmptyStatePremium({ onStart }) {
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 16,
-              marginTop: 30,
+              gap: 14,
+              marginTop: 24,
             }}
           >
-            {featureCards.map((card) => (
+            {[
+              {
+                title: "Execução auditável",
+                description: "Cada ação nasce com contexto, rastreabilidade e leitura executiva.",
+              },
+              {
+                title: "Camada premium real",
+                description: "Mais contraste, mais valor percebido e menos sensação de MVP cru.",
+              },
+              {
+                title: "Continuidade preservada",
+                description: "Sidebar, threads, wallet e acessos continuam disponíveis.",
+              },
+            ].map((card) => (
               <div
                 key={card.title}
                 style={{
-                  background: "rgba(15, 23, 42, 0.58)",
+                  background: "rgba(15, 23, 42, 0.52)",
                   border: `1px solid ${COLORS.border}`,
-                  borderRadius: 24,
-                  padding: 20,
+                  borderRadius: 22,
+                  padding: 18,
                 }}
               >
                 <div
                   style={{
-                    fontSize: 15,
-                    fontWeight: 700,
-                    marginBottom: 10,
                     color: COLORS.text,
+                    fontSize: 15,
+                    fontWeight: 800,
+                    marginBottom: 8,
                   }}
                 >
                   {card.title}
                 </div>
                 <div
                   style={{
-                    fontSize: 14,
-                    lineHeight: 1.65,
                     color: COLORS.muted,
+                    fontSize: 13,
+                    lineHeight: 1.65,
                   }}
                 >
                   {card.description}
@@ -162,183 +188,252 @@ export default function EmptyStatePremium({ onStart }) {
 
           <div
             style={{
-              marginTop: 28,
               display: "flex",
-              gap: 14,
+              gap: 12,
               flexWrap: "wrap",
-              alignItems: "center",
+              marginTop: 24,
             }}
           >
             <button
-              onClick={onStart}
+              onClick={handlePrimary}
               style={{
                 border: "none",
                 background: "linear-gradient(135deg, #7c3aed 0%, #2563eb 100%)",
                 color: "white",
                 borderRadius: 16,
-                padding: "16px 22px",
-                fontSize: 15,
-                fontWeight: 700,
+                padding: "15px 18px",
+                fontSize: 14,
+                fontWeight: 800,
                 cursor: "pointer",
-                boxShadow: "0 20px 40px rgba(76, 29, 149, 0.35)",
+                boxShadow: "0 20px 40px rgba(76, 29, 149, 0.32)",
               }}
             >
-              Iniciar execução premium
+              Iniciar conversa guiada
             </button>
 
+            <button
+              onClick={() => callMaybe(onSecondaryAction)}
+              style={{
+                border: "1px solid rgba(148, 163, 184, 0.18)",
+                background: "rgba(15, 23, 42, 0.56)",
+                color: COLORS.text,
+                borderRadius: 16,
+                padding: "15px 18px",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Abrir blueprint
+            </button>
+
+            <button
+              onClick={() => callMaybe(onTertiaryAction)}
+              style={{
+                border: "1px solid rgba(148, 163, 184, 0.18)",
+                background: "rgba(15, 23, 42, 0.56)",
+                color: COLORS.text,
+                borderRadius: 16,
+                padding: "15px 18px",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Ver próximos passos
+            </button>
+          </div>
+
+          <div style={{ marginTop: 22 }}>
             <div
               style={{
                 color: COLORS.subtle,
-                fontSize: 14,
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
+                fontSize: 12,
+                textTransform: "uppercase",
+                letterSpacing: "0.12em",
+                marginBottom: 10,
+                fontWeight: 800,
               }}
             >
-              <span
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: "50%",
-                  background: COLORS.success,
-                  display: "inline-block",
-                }}
-              />
-              Primeiro resultado guiado em poucos segundos
+              Começos rápidos
             </div>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {PROMPT_SUGGESTIONS.map((prompt) => (
+                <button
+                  key={prompt}
+                  onClick={() => callMaybe(onFillPrompt, prompt)}
+                  style={{
+                    border: "1px solid rgba(148, 163, 184, 0.16)",
+                    background: "rgba(2, 6, 23, 0.34)",
+                    color: COLORS.muted,
+                    borderRadius: 999,
+                    padding: "10px 14px",
+                    fontSize: 13,
+                    lineHeight: 1.35,
+                    cursor: "pointer",
+                  }}
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gap: 16,
+          alignContent: "start",
+        }}
+      >
+        <div
+          style={{
+            background: "linear-gradient(180deg, rgba(15, 23, 42, 0.94) 0%, rgba(9, 13, 24, 0.98) 100%)",
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 28,
+            padding: 20,
+            boxShadow: "0 24px 70px rgba(2, 6, 23, 0.32)",
+          }}
+        >
+          <div
+            style={{
+              color: COLORS.muted,
+              fontSize: 12,
+              textTransform: "uppercase",
+              letterSpacing: "0.12em",
+              marginBottom: 10,
+              fontWeight: 800,
+            }}
+          >
+            Estado atual
+          </div>
+
+          <div
+            style={{
+              fontSize: 26,
+              lineHeight: 1.1,
+              fontWeight: 900,
+              color: COLORS.text,
+              marginBottom: 10,
+            }}
+          >
+            Plataforma pronta para ação
+          </div>
+
+          <div
+            style={{
+              color: COLORS.muted,
+              fontSize: 14,
+              lineHeight: 1.7,
+              marginBottom: 16,
+            }}
+          >
+            A navegação lateral continua no lugar certo. O centro do console agora comunica
+            valor mais rápido, com ações úteis e leitura operacional antes da primeira mensagem.
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: 10,
+            }}
+          >
+            {[
+              ["Threads", "Ativas"],
+              ["Jornada", "Preservada"],
+              ["UX", "Mais clara"],
+              ["Valor", "Mais visível"],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                style={{
+                  borderRadius: 18,
+                  padding: "12px",
+                  border: "1px solid rgba(148, 163, 184, 0.12)",
+                  background: "rgba(255,255,255,0.03)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: COLORS.subtle,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    marginBottom: 6,
+                    fontWeight: 800,
+                  }}
+                >
+                  {label}
+                </div>
+                <div style={{ color: COLORS.text, fontSize: 14, fontWeight: 800 }}>
+                  {value}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
         <div
           style={{
-            background: COLORS.panelStrong,
+            background: "linear-gradient(180deg, rgba(15, 23, 42, 0.94) 0%, rgba(9, 13, 24, 0.98) 100%)",
             border: `1px solid ${COLORS.border}`,
-            borderRadius: 32,
-            padding: 28,
-            boxShadow: "0 30px 80px rgba(2, 6, 23, 0.45)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 18,
+            borderRadius: 28,
+            padding: 18,
+            boxShadow: "0 24px 70px rgba(2, 6, 23, 0.28)",
           }}
         >
-          <div>
-            <div
-              style={{
-                color: COLORS.muted,
-                textTransform: "uppercase",
-                letterSpacing: "0.12em",
-                fontSize: 12,
-                marginBottom: 10,
-              }}
-            >
-              Primeira vitória
-            </div>
-            <div
-              style={{
-                fontSize: 28,
-                fontWeight: 800,
-                lineHeight: 1.15,
-                marginBottom: 10,
-              }}
-            >
-              Entre no fluxo certo imediatamente
-            </div>
-            <div
-              style={{
-                color: COLORS.muted,
-                fontSize: 15,
-                lineHeight: 1.7,
-              }}
-            >
-              O console já apresenta o valor antes da execução começar:
-              controle operacional, sinal de atividade e uma ação principal
-              inequívoca.
-            </div>
+          <div
+            style={{
+              color: COLORS.muted,
+              fontSize: 12,
+              textTransform: "uppercase",
+              letterSpacing: "0.12em",
+              marginBottom: 10,
+              fontWeight: 800,
+            }}
+          >
+            Direção de design
           </div>
 
           <div
             style={{
-              borderRadius: 24,
-              padding: 20,
-              background: "linear-gradient(180deg, rgba(30, 41, 59, 0.72) 0%, rgba(15, 23, 42, 0.88) 100%)",
-              border: `1px solid ${COLORS.border}`,
+              display: "grid",
+              gap: 12,
+              color: COLORS.muted,
+              fontSize: 14,
+              lineHeight: 1.65,
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 16,
-                alignItems: "center",
-                marginBottom: 18,
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 13, color: COLORS.subtle, marginBottom: 6 }}>
-                  Status do ambiente
-                </div>
-                <div style={{ fontSize: 18, fontWeight: 700 }}>Operação pronta</div>
-              </div>
+            {[
+              "O premium passa a reforçar o centro do console sem apagar o shell do produto.",
+              "A primeira vitória fica mais evidente com ações concretas e prompts iniciais.",
+              "A sensação visual sobe por contraste, profundidade e hierarquia real.",
+            ].map((item) => (
               <div
+                key={item}
                 style={{
-                  color: "#86efac",
-                  background: "rgba(34, 197, 94, 0.14)",
-                  border: "1px solid rgba(34, 197, 94, 0.22)",
-                  borderRadius: 999,
-                  padding: "8px 12px",
-                  fontSize: 12,
-                  fontWeight: 700,
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "flex-start",
                 }}
               >
-                Live
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gap: 14 }}>
-              {[
-                "Diagnóstico e despacho apresentados em sequência elegante.",
-                "Timeline e logs organizados para leitura executiva.",
-                "Visual de alta confiança sem depender de bibliotecas extras.",
-              ].map((item) => (
-                <div
-                  key={item}
+                <span
                   style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 12,
-                    color: COLORS.muted,
-                    fontSize: 14,
-                    lineHeight: 1.65,
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: "linear-gradient(135deg, #7c3aed, #2563eb)",
+                    marginTop: 8,
+                    flexShrink: 0,
                   }}
-                >
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      background: COLORS.accent2,
-                      marginTop: 8,
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span>{item}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div
-            style={{
-              borderRadius: 24,
-              padding: 18,
-              border: `1px dashed ${COLORS.border}`,
-              color: COLORS.subtle,
-              fontSize: 13,
-              lineHeight: 1.7,
-            }}
-          >
-            Direção de UX: manter percepção de exclusividade, clareza de controle
-            humano e sensação de produto maduro já no estado vazio.
+                />
+                <span>{item}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
