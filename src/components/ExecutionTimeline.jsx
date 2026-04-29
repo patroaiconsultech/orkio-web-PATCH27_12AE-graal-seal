@@ -14,15 +14,16 @@ const COLORS = {
 
 export default function ExecutionTimeline({ steps }) {
   const total = Array.isArray(steps) ? steps.length : 0;
+  const progress = total > 0 ? Math.min(100, Math.round((total / Math.max(total, 4)) * 100)) : 0;
 
   return (
     <div
       style={{
         background: `linear-gradient(180deg, ${COLORS.panelSoft} 0%, ${COLORS.panel} 100%)`,
         border: `1px solid ${COLORS.border}`,
-        borderRadius: 24,
-        padding: 20,
-        boxShadow: "0 24px 60px rgba(2, 6, 23, 0.42)",
+        borderRadius: 26,
+        padding: 22,
+        boxShadow: "0 26px 64px rgba(2, 6, 23, 0.42)",
       }}
     >
       <div
@@ -43,7 +44,7 @@ export default function ExecutionTimeline({ steps }) {
               textTransform: "uppercase",
               color: COLORS.muted,
               marginBottom: 6,
-              fontWeight: 800,
+              fontWeight: 900,
             }}
           >
             Execution flow
@@ -51,7 +52,7 @@ export default function ExecutionTimeline({ steps }) {
           <div
             style={{
               color: COLORS.text,
-              fontSize: 20,
+              fontSize: 21,
               lineHeight: 1.2,
               fontWeight: 900,
             }}
@@ -71,7 +72,7 @@ export default function ExecutionTimeline({ steps }) {
             borderRadius: 999,
             padding: "9px 13px",
             fontSize: 12,
-            fontWeight: 700,
+            fontWeight: 800,
           }}
         >
           <span
@@ -84,8 +85,29 @@ export default function ExecutionTimeline({ steps }) {
               display: "inline-block",
             }}
           />
-          {total > 0 ? `${total} etapa${total > 1 ? "s" : ""}` : "Aguardando"}
+          {total > 0 ? `${total} etapa${total > 1 ? "s" : ""} ativas` : "Aguardando"}
         </div>
+      </div>
+
+      <div
+        style={{
+          background: "rgba(2, 6, 23, 0.42)",
+          borderRadius: 999,
+          height: 10,
+          overflow: "hidden",
+          border: `1px solid ${COLORS.border}`,
+          marginBottom: 18,
+        }}
+      >
+        <div
+          style={{
+            width: `${progress}%`,
+            height: "100%",
+            background: "linear-gradient(90deg, #7c3aed 0%, #2563eb 100%)",
+            borderRadius: 999,
+            transition: "width 300ms ease",
+          }}
+        />
       </div>
 
       {total === 0 ? (
@@ -96,7 +118,7 @@ export default function ExecutionTimeline({ steps }) {
             padding: 18,
             color: COLORS.muted,
             fontSize: 14,
-            lineHeight: 1.65,
+            lineHeight: 1.68,
             background: "rgba(15, 23, 42, 0.55)",
           }}
         >
@@ -158,7 +180,7 @@ export default function ExecutionTimeline({ steps }) {
 
                 <div
                   style={{
-                    background: "rgba(15, 23, 42, 0.72)",
+                    background: "rgba(15, 23, 42, 0.74)",
                     border: `1px solid ${COLORS.border}`,
                     borderRadius: 18,
                     padding: 16,
@@ -188,14 +210,14 @@ export default function ExecutionTimeline({ steps }) {
                         borderRadius: 999,
                         padding: "5px 10px",
                         fontSize: 11,
-                        fontWeight: 700,
+                        fontWeight: 800,
                       }}
                     >
                       {isLast ? "Atual" : "Concluída"}
                     </span>
                   </div>
 
-                  <div style={{ color: COLORS.muted, fontSize: 14, lineHeight: 1.65 }}>
+                  <div style={{ color: COLORS.muted, fontSize: 14, lineHeight: 1.68 }}>
                     {step.description}
                   </div>
                 </div>
