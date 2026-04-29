@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import EmptyStatePremium from "../components/EmptyStatePremium";
-import ExecutionTimeline from "../components/ExecutionTimeline";
+import EmptyStatePremium from "./EmptyStatePremium";
+import ExecutionTimeline from "./ExecutionTimeline";
 
 const COLORS = {
   bg: "#020617",
