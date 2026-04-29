@@ -3624,21 +3624,22 @@ async function stopRealtime(reason = 'client_stop') {
 
     premiumEmptyShell: {
       display: "grid",
-      gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.18fr) minmax(320px, 420px)",
-      gap: isMobile ? "16px" : "18px",
+      gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.24fr) minmax(340px, 430px)",
+      gap: isMobile ? "18px" : "22px",
       alignItems: "stretch",
+      padding: isMobile ? "8px" : "6px",
     },
     premiumAside: {
       display: "grid",
-      gap: "14px",
+      gap: "16px",
       alignContent: "start",
     },
     premiumAsideCard: {
-      background: "linear-gradient(180deg, rgba(15,23,42,0.88) 0%, rgba(11,18,32,0.94) 100%)",
+      background: "linear-gradient(180deg, rgba(15,23,42,0.96) 0%, rgba(8,13,24,0.98) 100%)",
       border: "1px solid rgba(148,163,184,0.14)",
-      borderRadius: "24px",
-      padding: isMobile ? "16px" : "18px",
-      boxShadow: "0 24px 60px rgba(2, 6, 23, 0.28)",
+      borderRadius: "28px",
+      padding: isMobile ? "18px" : "20px",
+      boxShadow: "0 28px 70px rgba(2, 6, 23, 0.34)",
     },
     premiumAsideEyebrow: {
       fontSize: "11px",
@@ -3649,8 +3650,8 @@ async function stopRealtime(reason = 'client_stop') {
       fontWeight: 800,
     },
     premiumAsideTitle: {
-      fontSize: "20px",
-      lineHeight: 1.15,
+      fontSize: isMobile ? "18px" : "22px",
+      lineHeight: 1.12,
       fontWeight: 900,
       marginBottom: "10px",
       color: "#f8fafc",
@@ -3687,15 +3688,15 @@ async function stopRealtime(reason = 'client_stop') {
     },
     premiumStatusRow: {
       display: "grid",
-      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+      gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
       gap: "10px",
       marginTop: "14px",
     },
     premiumStatusCard: {
-      borderRadius: "16px",
-      padding: "12px",
+      borderRadius: "18px",
+      padding: "13px 12px",
       border: "1px solid rgba(148,163,184,0.12)",
-      background: "rgba(255,255,255,0.03)",
+      background: "rgba(255,255,255,0.04)",
     },
     premiumStatusLabel: {
       fontSize: "11px",
