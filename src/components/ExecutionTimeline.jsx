@@ -1,13 +1,11 @@
 import React from "react";
 
 const COLORS = {
-  bg: "#020617",
   panel: "#0b1220",
   panelSoft: "#0f172a",
   border: "rgba(148, 163, 184, 0.14)",
   text: "#f8fafc",
   muted: "#94a3b8",
-  subtle: "#64748b",
   accent: "#7c3aed",
   accentSoft: "rgba(124, 58, 237, 0.18)",
   success: "#22c55e",
@@ -23,42 +21,43 @@ export default function ExecutionTimeline({ steps }) {
         background: `linear-gradient(180deg, ${COLORS.panelSoft} 0%, ${COLORS.panel} 100%)`,
         border: `1px solid ${COLORS.border}`,
         borderRadius: 24,
-        padding: 24,
-        boxShadow: "0 24px 60px rgba(2, 6, 23, 0.45)",
+        padding: 20,
+        boxShadow: "0 24px 60px rgba(2, 6, 23, 0.42)",
       }}
     >
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          gap: 16,
           alignItems: "center",
-          marginBottom: 20,
+          gap: 12,
           flexWrap: "wrap",
+          marginBottom: 16,
         }}
       >
         <div>
           <div
             style={{
-              fontSize: 12,
+              fontSize: 11,
               letterSpacing: "0.14em",
               textTransform: "uppercase",
               color: COLORS.muted,
-              marginBottom: 8,
+              marginBottom: 6,
+              fontWeight: 800,
             }}
           >
             Execution flow
           </div>
-          <h3
+          <div
             style={{
-              margin: 0,
               color: COLORS.text,
-              fontSize: 22,
+              fontSize: 20,
               lineHeight: 1.2,
+              fontWeight: 900,
             }}
           >
             Linha de execução estratégica
-          </h3>
+          </div>
         </div>
 
         <div
@@ -67,12 +66,12 @@ export default function ExecutionTimeline({ steps }) {
             alignItems: "center",
             gap: 10,
             background: COLORS.accentSoft,
-            border: `1px solid rgba(124, 58, 237, 0.22)`,
+            border: "1px solid rgba(124, 58, 237, 0.22)",
             color: "#ddd6fe",
             borderRadius: 999,
-            padding: "10px 14px",
-            fontSize: 13,
-            fontWeight: 600,
+            padding: "9px 13px",
+            fontSize: 12,
+            fontWeight: 700,
           }}
         >
           <span
@@ -85,7 +84,7 @@ export default function ExecutionTimeline({ steps }) {
               display: "inline-block",
             }}
           />
-          {total > 0 ? `${total} etapa${total > 1 ? "s" : ""} concluída${total > 1 ? "s" : ""}` : "Aguardando início"}
+          {total > 0 ? `${total} etapa${total > 1 ? "s" : ""}` : "Aguardando"}
         </div>
       </div>
 
@@ -94,37 +93,26 @@ export default function ExecutionTimeline({ steps }) {
           style={{
             border: `1px dashed ${COLORS.border}`,
             borderRadius: 18,
-            padding: 22,
+            padding: 18,
+            color: COLORS.muted,
+            fontSize: 14,
+            lineHeight: 1.65,
             background: "rgba(15, 23, 42, 0.55)",
           }}
         >
-          <div
-            style={{
-              fontSize: 15,
-              color: COLORS.text,
-              fontWeight: 600,
-              marginBottom: 8,
-            }}
-          >
-            Nenhuma execução iniciada
-          </div>
-          <div style={{ color: COLORS.muted, fontSize: 14, lineHeight: 1.6 }}>
-            Quando a sessão começar, a timeline mostrará o avanço do diagnóstico,
-            o despacho dos especialistas e a consolidação executiva final.
-          </div>
+          A timeline aparecerá aqui com o avanço do diagnóstico, do despacho e da consolidação final.
         </div>
       ) : (
-        <div style={{ display: "grid", gap: 14 }}>
+        <div style={{ display: "grid", gap: 12 }}>
           {steps.map((step, index) => {
             const isLast = index === total - 1;
-
             return (
               <div
                 key={`${step.title}-${index}`}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "52px 1fr",
-                  gap: 16,
+                  gridTemplateColumns: "44px 1fr",
+                  gap: 14,
                   alignItems: "flex-start",
                 }}
               >
@@ -133,25 +121,25 @@ export default function ExecutionTimeline({ steps }) {
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
-                    minHeight: 74,
+                    minHeight: 72,
                   }}
                 >
                   <div
                     style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 16,
+                      width: 34,
+                      height: 34,
+                      borderRadius: 14,
                       background: isLast ? COLORS.successSoft : COLORS.accentSoft,
                       border: `1px solid ${isLast ? "rgba(34, 197, 94, 0.22)" : "rgba(124, 58, 237, 0.22)"}`,
                       color: isLast ? "#86efac" : "#ddd6fe",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontWeight: 700,
-                      fontSize: 14,
+                      fontWeight: 800,
+                      fontSize: 13,
                     }}
                   >
-                    {String(index + 1).padStart(2, "0")}
+                    {index + 1}
                   </div>
 
                   {!isLast && (
@@ -159,10 +147,10 @@ export default function ExecutionTimeline({ steps }) {
                       style={{
                         width: 2,
                         flex: 1,
-                        marginTop: 10,
+                        marginTop: 8,
                         borderRadius: 999,
                         background:
-                          "linear-gradient(180deg, rgba(124, 58, 237, 0.45) 0%, rgba(71, 85, 105, 0.1) 100%)",
+                          "linear-gradient(180deg, rgba(124, 58, 237, 0.44) 0%, rgba(71, 85, 105, 0.1) 100%)",
                       }}
                     />
                   )}
@@ -173,29 +161,22 @@ export default function ExecutionTimeline({ steps }) {
                     background: "rgba(15, 23, 42, 0.72)",
                     border: `1px solid ${COLORS.border}`,
                     borderRadius: 18,
-                    padding: 18,
+                    padding: 16,
                   }}
                 >
                   <div
                     style={{
                       display: "flex",
                       justifyContent: "space-between",
-                      gap: 12,
                       alignItems: "flex-start",
-                      marginBottom: 8,
+                      gap: 12,
                       flexWrap: "wrap",
+                      marginBottom: 8,
                     }}
                   >
-                    <strong
-                      style={{
-                        color: COLORS.text,
-                        fontSize: 16,
-                        lineHeight: 1.3,
-                      }}
-                    >
+                    <strong style={{ color: COLORS.text, fontSize: 15, lineHeight: 1.3 }}>
                       {step.title}
                     </strong>
-
                     <span
                       style={{
                         display: "inline-flex",
@@ -205,22 +186,16 @@ export default function ExecutionTimeline({ steps }) {
                         background: isLast ? COLORS.successSoft : COLORS.accentSoft,
                         border: `1px solid ${isLast ? "rgba(34, 197, 94, 0.22)" : "rgba(124, 58, 237, 0.22)"}`,
                         borderRadius: 999,
-                        padding: "6px 10px",
-                        fontSize: 12,
-                        fontWeight: 600,
+                        padding: "5px 10px",
+                        fontSize: 11,
+                        fontWeight: 700,
                       }}
                     >
-                      {isLast ? "Consolidação atual" : "Etapa concluída"}
+                      {isLast ? "Atual" : "Concluída"}
                     </span>
                   </div>
 
-                  <div
-                    style={{
-                      color: COLORS.muted,
-                      fontSize: 14,
-                      lineHeight: 1.65,
-                    }}
-                  >
+                  <div style={{ color: COLORS.muted, fontSize: 14, lineHeight: 1.65 }}>
                     {step.description}
                   </div>
                 </div>
