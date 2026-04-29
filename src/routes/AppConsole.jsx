@@ -22,17 +22,17 @@ const ORKIO_CHAT_STREAM_PRIMARY = ((ORKIO_ENV.VITE_CHAT_STREAM_PRIMARY || import
 const WALLET_UI_ENABLED = false;
 
 const EMPTY_STATE_PREVIEW_STEPS = [
-  { title: "Inicializando", description: "Console pronto para receber a primeira execução com contexto auditável." },
-  { title: "Processando", description: "A leitura estratégica é organizada sem perder clareza visual nem governança." },
-  { title: "Executando", description: "Os especialistas são acionados mantendo rastreabilidade e foco na próxima decisão." },
-  { title: "Consolidando", description: "A resposta final chega em formato executivo, com percepção premium e continuidade." },
+  { title: "Readiness", description: "Shell preservado, acessos visíveis e console pronto para a primeira ação com percepção premium." },
+  { title: "Focus", description: "O centro da experiência destaca a próxima melhor ação sem esconder threads, wallet e navegação." },
+  { title: "Activation", description: "A primeira execução nasce com prompts guiados, contexto e leitura de impacto imediato." },
+  { title: "Executive output", description: "Timeline, telemetria e resposta final mantêm linguagem mais madura e decisiva." },
 ];
 
 const EMPTY_STATE_PREVIEW_LOGS = [
-  "Acessos e navegação preservados no shell principal.",
-  "Sidebar, threads e ações do usuário continuam disponíveis.",
-  "Primeira ação premium pronta para uso sem engolir a rota.",
-  "Timeline e telemetria executiva visíveis antes da primeira mensagem.",
+  "Primeira vitória visível no centro do console.",
+  "Prompt guiado, blueprint e próximos passos acessíveis no primeiro clique.",
+  "Sidebar, usuário e navegação continuam intactos.",
+  "Leitura premium reforçada por contraste, profundidade e hierarquia.",
 ];
 
 class StreamSemanticError extends Error {
@@ -3624,30 +3624,30 @@ async function stopRealtime(reason = 'client_stop') {
 
     premiumEmptyShell: {
       display: "grid",
-      gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.24fr) minmax(340px, 430px)",
-      gap: isMobile ? "18px" : "22px",
+      gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.55fr) minmax(320px, 400px)",
+      gap: isMobile ? "18px" : "24px",
       alignItems: "stretch",
-      padding: isMobile ? "8px" : "6px",
+      padding: isMobile ? "8px" : "8px 6px",
     },
     premiumAside: {
       display: "grid",
-      gap: "16px",
+      gap: "18px",
       alignContent: "start",
     },
     premiumAsideCard: {
-      background: "linear-gradient(180deg, rgba(15,23,42,0.96) 0%, rgba(8,13,24,0.98) 100%)",
-      border: "1px solid rgba(148,163,184,0.14)",
-      borderRadius: "28px",
-      padding: isMobile ? "18px" : "20px",
-      boxShadow: "0 28px 70px rgba(2, 6, 23, 0.34)",
+      background: "linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(7,11,21,1) 100%)",
+      border: "1px solid rgba(148,163,184,0.16)",
+      borderRadius: "30px",
+      padding: isMobile ? "18px" : "22px",
+      boxShadow: "0 30px 80px rgba(2, 6, 23, 0.38)",
     },
     premiumAsideEyebrow: {
       fontSize: "11px",
-      letterSpacing: "0.12em",
+      letterSpacing: "0.14em",
       textTransform: "uppercase",
-      color: "rgba(148,163,184,0.78)",
-      marginBottom: "8px",
-      fontWeight: 800,
+      color: "rgba(148,163,184,0.88)",
+      marginBottom: "9px",
+      fontWeight: 900,
     },
     premiumAsideTitle: {
       fontSize: isMobile ? "18px" : "22px",
@@ -3658,8 +3658,8 @@ async function stopRealtime(reason = 'client_stop') {
     },
     premiumAsideText: {
       fontSize: "14px",
-      lineHeight: 1.65,
-      color: "rgba(226,232,240,0.78)",
+      lineHeight: 1.72,
+      color: "rgba(226,232,240,0.82)",
     },
     premiumLogList: {
       display: "grid",
@@ -4195,11 +4195,11 @@ async function stopRealtime(reason = 'client_stop') {
               <div style={styles.premiumAside}>
                 <div style={styles.premiumAsideCard}>
                   <div style={styles.premiumAsideEyebrow}>Continuity preserved</div>
-                  <div style={styles.premiumAsideTitle}>Experiência premium sem perder os acessos da plataforma</div>
+                  <div style={styles.premiumAsideTitle}>A mudança agora precisa ser impossível de ignorar</div>
                   <div style={styles.premiumAsideText}>
-                    O console continua dentro do shell original: threads, nova conversa, usuário,
-                    admin e navegação permanecem visíveis. O premium agora entra como camada de
-                    percepção e primeira vitória, não como substituição da rota inteira.
+                    O shell principal continua preservado, mas o centro do console passa a comunicar
+                    direção, valor e próxima ação com mais intensidade. A ideia não é trocar a rota:
+                    é transformar a primeira percepção do produto.
                   </div>
 
                   <div style={styles.premiumStatusRow}>
@@ -4213,7 +4213,7 @@ async function stopRealtime(reason = 'client_stop') {
                     </div>
                     <div style={styles.premiumStatusCard}>
                       <div style={styles.premiumStatusLabel}>Jornada</div>
-                      <div style={styles.premiumStatusValue}>Landing integrada</div>
+                      <div style={styles.premiumStatusValue}>Premium in-shell</div>
                     </div>
                   </div>
                 </div>
@@ -4226,8 +4226,8 @@ async function stopRealtime(reason = 'client_stop') {
                 <div style={styles.premiumAsideCard}>
                   <div style={styles.premiumAsideEyebrow}>Telemetria executiva</div>
                   <div style={styles.premiumAsideText}>
-                    Antes mesmo da primeira mensagem, a interface já comunica controle,
-                    continuidade e valor percebido mais alto.
+                    Antes mesmo da primeira mensagem, o usuário já vê sinais concretos de prontidão,
+                    continuidade funcional e leitura executiva mais madura.
                   </div>
                   <div style={styles.premiumLogList}>
                     {EMPTY_STATE_PREVIEW_LOGS.map((entry) => (
